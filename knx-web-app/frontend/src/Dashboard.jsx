@@ -2,39 +2,67 @@ import React, { useState, useEffect, useRef } from 'react';
 import { triggerAction } from './configApi';
 import { Lightbulb, Gamepad2, Blinds } from 'lucide-react';
 
-const BlindsCard = ({ func, istPosition, onAction }) => {
+const BlindsCard = ({ func, istPosition, isMoving, onAction }) => {
   const [sollPosition, setSollPosition] = useState(istPosition !== undefined ? istPosition : 0);
-  const targetSollRef = useRef(null);
+  const initializedRef = useRef(false);
+  const softwareCommandActiveRef = useRef(false);
 
+  // React to Ist-position updates from the bus
   useEffect(() => {
-    if (istPosition !== undefined && targetSollRef.current === null) {
+    if (istPosition === undefined) return;
+
+    // First real value after startup: sync Soll to Ist unconditionally
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      softwareCommandActiveRef.current = false;
       setSollPosition(istPosition);
+      return;
     }
-    
-    // Unlock if we've reached our target (or very close to it due to rounding)
-    if (istPosition !== undefined && targetSollRef.current !== null) {
-      if (Math.abs(istPosition - targetSollRef.current) <= 2) {
-        targetSollRef.current = null;
-      }
-    }
+
+    // If a software command is in flight: keep Soll fixed, don't follow Ist
+    if (softwareCommandActiveRef.current) return;
+
+    // No software command active: this is a wall-switch or external movement → follow Ist
+    setSollPosition(istPosition);
   }, [istPosition]);
+
+  // React to the "is moving" GA: when movement stops and we had a software command, clear the lock
+  useEffect(() => {
+    if (isMoving === false && softwareCommandActiveRef.current) {
+      softwareCommandActiveRef.current = false;
+    }
+  }, [isMoving]);
 
   const handleChange = (e) => {
     setSollPosition(parseInt(e.target.value, 10));
   };
 
   const handlePointerUp = () => {
-    targetSollRef.current = sollPosition;
-    // Fallback unlock after 30 seconds if target precisely isn't reached
-    setTimeout(() => { targetSollRef.current = null; }, 30000);
+    softwareCommandActiveRef.current = true;
     onAction({ ...func, value: sollPosition });
+
+    // Fallback: if no "is moving" GA is configured, auto-release lock after 3 minutes
+    // (covers the longest possible blind travel time)
+    if (!func.movingGroupAddress) {
+      clearTimeout(softwareCommandActiveRef._timeout);
+      softwareCommandActiveRef._timeout = setTimeout(() => {
+        softwareCommandActiveRef.current = false;
+      }, 180000);
+    }
   };
+
+  // If no movingGroupAddress configured, fall back to simpler flag-based logic
+  // (once user interacts, Soll stays fixed)
+  const hasMoveGA = !!func.movingGroupAddress;
 
   return (
     <div className="action-btn" style={{ flexDirection: 'column', alignItems: 'stretch', cursor: 'default' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
         <Blinds size={18} color="var(--accent-color)" />
         <span style={{ fontWeight: '600' }}>{func.name}</span>
+        {isMoving && hasMoveGA && (
+          <span style={{ fontSize: '0.7rem', color: 'var(--accent-color)', marginLeft: '0.25rem', animation: 'pulse 1s infinite' }}>⬆⬇ fährt…</span>
+        )}
         <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{sollPosition}%</span>
       </div>
       <div className="blinds-widget">
@@ -112,11 +140,15 @@ export default function Dashboard({ config, deviceStates = {}, addToast }) {
               
               if (func.type === 'percentage') {
                 const istPosition = currentState !== undefined ? currentState : 0;
+                const isMoving = func.movingGroupAddress
+                  ? deviceStates[func.movingGroupAddress]
+                  : undefined;
                 return (
                   <BlindsCard 
                     key={func.id} 
                     func={func} 
-                    istPosition={istPosition} 
+                    istPosition={istPosition}
+                    isMoving={isMoving}
                     onAction={handleAction} 
                   />
                 );

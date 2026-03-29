@@ -2,6 +2,39 @@
   "knxIp": "192.168.1.85",
   "rooms": [
     {
+      "id": "1774781219020",
+      "name": "Korbi-Zimmer",
+      "functions": [
+        {
+          "id": "1774781266154",
+          "name": "Hell",
+          "type": "scene",
+          "groupAddress": "2/5/1",
+          "sceneNumber": 2
+        }
+      ]
+    },
+    {
+      "id": "1774780884638",
+      "name": "Wohnzimmer",
+      "functions": [
+        {
+          "id": "1774780891658",
+          "name": "Aus",
+          "type": "scene",
+          "groupAddress": "2/5/0",
+          "sceneNumber": 1
+        },
+        {
+          "id": "1774780946221",
+          "name": "Hell",
+          "type": "scene",
+          "groupAddress": "2/5/0",
+          "sceneNumber": 2
+        }
+      ]
+    },
+    {
       "id": "1774709374928",
       "name": "Büro",
       "functions": [
@@ -33,7 +66,8 @@
           "type": "percentage",
           "groupAddress": "3/2/0",
           "sceneNumber": 1,
-          "statusGroupAddress": "3/7/13"
+          "statusGroupAddress": "3/7/13",
+          "movingGroupAddress": "3/7/56"
         }
       ]
     }

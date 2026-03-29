@@ -14,66 +14,74 @@ class KnxService {
   }
 
   connect(ipAddress, port = 3671, onConnectCallback = null) {
+    // Disconnect existing connection first, then wait for it to close
     if (this.connection) {
+      this._reconnecting = true; // suppress stale 'disconnected' event
       try {
         this.connection.Disconnect();
       } catch (e) {
-        console.error("Error disconnecting previous connection:", e);
+        console.error('Error disconnecting previous connection:', e);
       }
+      this.connection = null;
+      this.isConnected = false;
     }
 
     if (!ipAddress) {
       console.log('No KNX IP address provided in config');
+      this._reconnecting = false;
       return;
     }
 
-    console.log(`Attempting to connect to KNX interface at ${ipAddress}:${port}...`);
-    
-    this.connection = new knx.Connection({
-      ipAddr: ipAddress,
-      ipPort: port,
-      // unsecure tunneling
-      handlers: {
-        connected: () => {
-          console.log('Connected to KNX system at', ipAddress);
-          this.isConnected = true;
-          this.io.emit('knx_status', { connected: true, msg: 'Connected successfully to bus' });
-          if (onConnectCallback) onConnectCallback();
-        },
-        event: (evt, src, dest, value) => {
-          let parsedValue = value;
-          const type = this.gaToType[dest];
+    console.log(`Connecting to KNX interface at ${ipAddress}:${port}...`);
 
-          if (Buffer.isBuffer(value) && value.length === 1) {
-            if (type === 'percentage') {
-              // DPT 5.001 (0-255) -> (0-100%)
-              parsedValue = Math.round((value[0] / 255) * 100);
-            } else {
-              // Default assume 1-bit boolean
-              if (value[0] === 1) parsedValue = true;
-              else if (value[0] === 0) parsedValue = false;
+    // Give the KNX library time to fully close the previous tunnel before opening a new one
+    setTimeout(() => {
+      this.connection = new knx.Connection({
+        ipAddr: ipAddress,
+        ipPort: port,
+        handlers: {
+          connected: () => {
+            console.log('Connected to KNX system at', ipAddress);
+            this._reconnecting = false;
+            this.isConnected = true;
+            this.io.emit('knx_status', { connected: true, msg: 'Connected successfully to bus' });
+            if (onConnectCallback) onConnectCallback();
+          },
+          event: (evt, src, dest, value) => {
+            let parsedValue = value;
+            const type = this.gaToType[dest];
+
+            if (Buffer.isBuffer(value) && value.length === 1) {
+              if (type === 'percentage') {
+                parsedValue = Math.round((value[0] / 255) * 100);
+              } else {
+                if (value[0] === 1) parsedValue = true;
+                else if (value[0] === 0) parsedValue = false;
+              }
+            }
+
+            if (evt === 'GroupValue_Write' || evt === 'GroupValue_Response') {
+              this.deviceStates[dest] = parsedValue;
+              this.io.emit('knx_state_update', { groupAddress: dest, value: parsedValue });
+            }
+          },
+          error: (connstatus) => {
+            console.error('KNX Connection Error:', connstatus);
+            this.isConnected = false;
+            this.io.emit('knx_error', { msg: `Bus access failed: ${connstatus}. Check IP interface.` });
+            this.io.emit('knx_status', { connected: false, msg: 'Disconnected from bus' });
+          },
+          disconnected: () => {
+            console.log('KNX Disconnected');
+            this.isConnected = false;
+            // Don't broadcast offline if we're intentionally reconnecting to a new IP
+            if (!this._reconnecting) {
+              this.io.emit('knx_status', { connected: false, msg: 'Disconnected from bus' });
             }
           }
-          
-          if (evt === 'GroupValue_Write' || evt === 'GroupValue_Response') {
-            this.deviceStates[dest] = parsedValue;
-            this.io.emit('knx_state_update', { groupAddress: dest, value: parsedValue });
-          }
-        },
-        error: (connstatus) => {
-          console.error('KNX Connection Error:', connstatus);
-          this.isConnected = false;
-          // emit human-friendly message
-          this.io.emit('knx_error', { msg: `Bus access failed: ${connstatus}. Check IP interface.` });
-          this.io.emit('knx_status', { connected: false, msg: 'Disconnected from bus' });
-        },
-        disconnected: () => {
-          console.log('KNX Disconnected');
-          this.isConnected = false;
-          this.io.emit('knx_status', { connected: false, msg: 'Disconnected from bus' });
         }
-      }
-    });
+      });
+    }, 500);
   }
 
   readStatus(groupAddress) {

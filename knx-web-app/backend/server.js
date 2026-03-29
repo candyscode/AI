@@ -16,8 +16,9 @@ const io = new Server(server, {
 app.use(cors());
 app.use(bodyParser.json());
 
-const knxService = new KnxService(io);
 const CONFIG_FILE = path.join(__dirname, 'config.json');
+
+const knxService = new KnxService(io);
 
 // Default empty config
 let config = {
@@ -42,6 +43,10 @@ function establishConnection() {
           }
           if (func.groupAddress) {
             gaToType[func.groupAddress] = func.type;
+          }
+          // Register the "is moving" GA as a 1-bit type
+          if (func.movingGroupAddress) {
+            gaToType[func.movingGroupAddress] = 'moving';
           }
         });
       });
@@ -142,7 +147,7 @@ io.on('connection', (socket) => {
     msg: knxService.isConnected ? 'Connected to bus' : (config.knxIp ? 'Disconnected from bus' : 'No KNX IP Configured') 
   });
   
-  // Broadcast initial parsed KNX values from previous reads/events
+  // Broadcast initial parsed KNX values (persisted + live)
   socket.emit('knx_initial_states', knxService.deviceStates);
 });
 

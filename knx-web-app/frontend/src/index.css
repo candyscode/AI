@@ -467,3 +467,256 @@ body {
   cursor: ns-resize;
   z-index: 10;
 }
+
+/* Settings: Labeled Field */
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.settings-field-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.badge-required {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent-color);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+.badge-optional {
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--text-secondary);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+/* ── Function Card ───────────────────────────────── */
+.function-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 0.6rem;
+  transition: border-color 0.2s;
+}
+.function-card:hover { border-color: rgba(59, 130, 246, 0.2); }
+
+/* Grid: [sort] [left] [right] [delete] */
+.function-layout {
+  display: grid;
+  grid-template-columns: 32px 200px 1fr 36px;
+  gap: 1rem;
+  align-items: start;
+}
+
+.func-sort {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-top: 1.4rem; /* align with input tops */
+}
+
+/* Left column: Name + Type stacked, same width */
+.func-left-col {
+  display: flex;
+  flex-direction: column;
+}
+.func-left-col .settings-field,
+.func-left-col .form-input,
+.func-left-col .type-select {
+  width: 100%;
+}
+
+/* Right column: GA fields stacked, all full width */
+.func-right-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.func-right-col .settings-field,
+.func-right-col .form-input {
+  width: 100%;
+}
+
+.func-delete {
+  display: flex;
+  align-items: flex-start;
+  padding-top: 1.4rem;
+}
+
+/* ── Custom Type Dropdown ───────────────────────── */
+.type-select {
+  position: relative;
+  width: 100%;
+  user-select: none;
+}
+
+.type-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.55rem 0.875rem;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  min-height: 52px;
+}
+.type-select-trigger:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.type-select-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.type-select-name {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.type-select-dpt {
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+  opacity: 0.8;
+  font-family: 'Inter', monospace;
+  letter-spacing: 0.03em;
+}
+
+.type-select-chevron {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+.type-select-chevron.open { transform: rotate(180deg); }
+
+.type-select-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #1e2128;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.type-select-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.6rem 0.875rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.type-select-option:hover { background: rgba(59, 130, 246, 0.12); }
+.type-select-option.active { background: rgba(59, 130, 246, 0.18); }
+.type-select-option.active .type-select-name { color: var(--accent-color); }
+
+/* ── GA Field Tooltip ───────────────────────────── */
+.ga-field .settings-field-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ga-tooltip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ga-tooltip-icon {
+  color: var(--text-secondary);
+  opacity: 0.5;
+  cursor: help;
+  transition: opacity 0.2s;
+}
+.ga-tooltip-wrap:hover .ga-tooltip-icon { opacity: 1; color: var(--accent-color); }
+
+.ga-tooltip-bubble {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e2128;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  white-space: normal;
+  width: 220px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 200;
+}
+.ga-tooltip-wrap:hover .ga-tooltip-bubble { opacity: 1; }
+
+/* Arrow on tooltip */
+.ga-tooltip-bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: rgba(255, 255, 255, 0.12);
+}
+
+/* ── Sort btn, section label ────────────────────── */
+.sort-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  padding: 0.28rem 0.38rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  transition: background 0.15s, color 0.15s;
+}
+.sort-btn:hover:not(:disabled) { background: rgba(59, 130, 246, 0.15); color: var(--accent-color); }
+.sort-btn:disabled { opacity: 0.2; cursor: default; }
+
+.section-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+  opacity: 0.65;
+}
+
+
