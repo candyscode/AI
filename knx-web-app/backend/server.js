@@ -31,14 +31,22 @@ function establishConnection() {
     knxService.connect(config.knxIp, config.knxPort, () => {
       console.log('Orchestrating read requests for status GAs...');
       const statusGAs = new Set();
+      const gaToType = {};
+      
       config.rooms.forEach(room => {
         if (!room.functions) return;
         room.functions.forEach(func => {
-          if (func.type === 'switch' && func.statusGroupAddress) {
+          if (func.statusGroupAddress) {
             statusGAs.add(func.statusGroupAddress);
+            gaToType[func.statusGroupAddress] = func.type;
+          }
+          if (func.groupAddress) {
+            gaToType[func.groupAddress] = func.type;
           }
         });
       });
+      
+      knxService.setGaToType(gaToType);
       
       let delay = 0;
       statusGAs.forEach(ga => {
@@ -104,17 +112,17 @@ app.post('/api/config', (req, res) => {
 
 // Action trigger
 app.post('/api/action', (req, res) => {
-  const { groupAddress, type, value, sceneNumber } = req.body;
+  const { groupAddress, type, sceneNumber, value } = req.body;
   
   try {
     if (type === 'scene') {
       knxService.writeScene(groupAddress, sceneNumber);
-    } else if (type === 'switch') {
-      knxService.writeBit(groupAddress, value);
     } else if (type === 'percentage') {
-      knxService.writeBytePercentage(groupAddress, value);
+      // 0-100% -> 'DPT5.001'
+      knxService.writeGroupValue(groupAddress, value, 'DPT5.001');
     } else {
-      knxService.writeBit(groupAddress, value); // default
+      // type === 'switch' or other mapped to boolean True/False 1-bit
+      knxService.writeGroupValue(groupAddress, !!value, 'DPT1');
     }
     
     res.json({ success: true, message: `Sent to bus` });

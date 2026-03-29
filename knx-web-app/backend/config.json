@@ -26,6 +26,14 @@
           "groupAddress": "3/2/201",
           "sceneNumber": 1,
           "statusGroupAddress": "3/7/47"
+        },
+        {
+          "id": "1774712092753",
+          "name": "Rollo",
+          "type": "percentage",
+          "groupAddress": "3/2/0",
+          "sceneNumber": 1,
+          "statusGroupAddress": "3/7/13"
         }
       ]
     }

@@ -5,8 +5,6 @@ import Settings from './Settings';
 import { Home, Settings as SettingsIcon, Wifi, WifiOff } from 'lucide-react';
 import { getConfig } from './configApi';
 
-const socket = io('http://localhost:3001');
-
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [config, setConfig] = useState({ knxIp: '', knxPort: 3671, rooms: [] });
@@ -37,10 +35,12 @@ function App() {
 
   useEffect(() => {
     fetchConfig();
+    
+    // Initialize socket inside effect to prevent missing early "initial_states" events
+    const socket = io('http://localhost:3001');
 
     socket.on('knx_status', (status) => {
       setKnxStatus(status);
-      if(status.connected) addToast(status.msg, 'success');
     });
 
     socket.on('knx_error', (error) => {
@@ -56,10 +56,7 @@ function App() {
     });
 
     return () => {
-      socket.off('knx_status');
-      socket.off('knx_error');
-      socket.off('knx_initial_states');
-      socket.off('knx_state_update');
+      socket.disconnect();
     };
   }, []);
 

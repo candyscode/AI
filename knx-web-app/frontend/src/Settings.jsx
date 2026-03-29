@@ -257,7 +257,7 @@ export default function Settings({ config, fetchConfig, addToast }) {
                       />
                     )}
                     
-                    {func.type === 'switch' && (
+                    {(func.type === 'switch' || func.type === 'percentage') && (
                       <input 
                         className="form-input" 
                         style={{ width: '120px' }} 

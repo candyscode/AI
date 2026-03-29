@@ -6,6 +6,11 @@ class KnxService {
     this.io = io;
     this.isConnected = false;
     this.deviceStates = {};
+    this.gaToType = {};
+  }
+
+  setGaToType(map) {
+    this.gaToType = map;
   }
 
   connect(ipAddress, port = 3671, onConnectCallback = null) {
@@ -37,10 +42,17 @@ class KnxService {
         },
         event: (evt, src, dest, value) => {
           let parsedValue = value;
+          const type = this.gaToType[dest];
+
           if (Buffer.isBuffer(value) && value.length === 1) {
-            // Assume 1-bit boolean if value is a 1-byte buffer with 0/1 content
-            if (value[0] === 1) parsedValue = true;
-            else if (value[0] === 0) parsedValue = false;
+            if (type === 'percentage') {
+              // DPT 5.001 (0-255) -> (0-100%)
+              parsedValue = Math.round((value[0] / 255) * 100);
+            } else {
+              // Default assume 1-bit boolean
+              if (value[0] === 1) parsedValue = true;
+              else if (value[0] === 0) parsedValue = false;
+            }
           }
           
           if (evt === 'GroupValue_Write' || evt === 'GroupValue_Response') {
@@ -71,6 +83,28 @@ class KnxService {
       console.log(`Requested status read for ${groupAddress}`);
     } catch(e) {
       console.error(`Error requesting status read for ${groupAddress}:`, e.message);
+    }
+  }
+
+  writeGroupValue(groupAddress, value, dpt) {
+    if (!this.isConnected) {
+      throw new Error('Not connected to KNX bus');
+    }
+    
+    if (dpt === 'DPT5.001') {
+      try {
+        this.connection.write(groupAddress, value, 'DPT5.001');
+        console.log(`Writing percentage ${value}% to ${groupAddress}`);
+      } catch (e) {
+        throw new Error(`Failed to write percentage to ${groupAddress}: ` + e.message);
+      }
+    } else {
+      try {
+        this.connection.write(groupAddress, value ? 1 : 0, 'DPT1');
+        console.log(`Writing switch ${value ? 'ON' : 'OFF'} to ${groupAddress}`);
+      } catch (e) {
+        throw new Error(`Failed to write boolean to ${groupAddress}: ` + e.message);
+      }
     }
   }
 
