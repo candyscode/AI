@@ -39,18 +39,26 @@ jobs:
           echo "Deploying branch: $BRANCH"
           echo "Host: ${{ secrets.VPS_HOST }}"
           echo "User: ${{ secrets.VPS_USER }}"
-          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
-            echo 'SSH connection successful' &&
-            cd ~ &&
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
+            set -e
+            echo 'SSH connected successfully'
+            cd ~
             if [ ! -d 'knx-viz' ]; then
+              echo 'Cloning repository...'
               git clone https://github.com/candyscode/AI.git knx-viz
-            fi &&
-            cd knx-viz &&
-            git fetch origin &&
-            git checkout $BRANCH &&
-            git pull origin $BRANCH &&
-            chmod +x deploy-staging.sh &&
-            ./deploy-staging.sh $BRANCH
+            fi
+            cd knx-viz
+            echo 'Fetching latest changes...'
+            git fetch origin
+            echo 'Checking out branch: $BRANCH'
+            git checkout $BRANCH
+            echo 'Pulling latest changes...'
+            git pull origin $BRANCH
+            echo 'Stopping existing containers...'
+            docker compose -f docker-compose.staging.yml down 2>/dev/null || true
+            echo 'Building and starting containers...'
+            docker compose -f docker-compose.staging.yml up -d --build
+            echo 'Deployment complete!'
           "
         env:
           SSH_AUTH_SOCK: ${{ env.SSH_AUTH_SOCK }}
