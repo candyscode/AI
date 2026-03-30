@@ -26,36 +26,27 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
 
-      - name: Test SSH Connection
+      - name: Deploy to VPS
         run: |
-          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "echo 'SSH OK'"
-
-      - name: Clone repo on VPS
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
-            cd ~ && 
-            [ ! -d 'knx-viz' ] && git clone https://github.com/candyscode/AI.git knx-viz || echo 'Repo exists'
-          "
-
-      - name: Checkout branch
-        run: |
+          set -ex
           BRANCH="${{ github.event.inputs.branch || github.ref_name }}"
-          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
-            cd ~/knx-viz &&
-            git fetch origin &&
-            git checkout $BRANCH &&
-            git pull origin $BRANCH
-          "
-
-      - name: Deploy with Docker Compose
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
-            cd ~/knx-viz &&
-            docker compose -f docker-compose.staging.yml down 2>/dev/null || true &&
-            docker compose -f docker-compose.staging.yml up -d --build
-          "
-
-      - name: Notify success
-        run: |
-          echo "✅ Staging deployed!"
-          echo "🌐 http://${{ secrets.VPS_HOST }}:8080"
+          echo "=== Starting deploy for branch: $BRANCH ==="
+          
+          # Test SSH connection
+          echo "=== Testing SSH connection ==="
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "echo 'SSH OK'"
+          
+          # Clone repo if needed
+          echo "=== Ensuring repo exists ==="
+          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "cd ~ && [ -d 'knx-viz' ] || git clone https://github.com/candyscode/AI.git knx-viz"
+          
+          # Update code
+          echo "=== Updating code ==="
+          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "cd ~/knx-viz && git fetch origin && git checkout $BRANCH && git pull origin $BRANCH"
+          
+          # Deploy
+          echo "=== Deploying with Docker ==="
+          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "cd ~/knx-viz && docker compose -f docker-compose.staging.yml down 2>/dev/null || true && docker compose -f docker-compose.staging.yml up -d --build"
+          
+          echo "=== Deploy complete ==="
+          echo "URL: http://${{ secrets.VPS_HOST }}:8080"
