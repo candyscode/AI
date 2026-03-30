@@ -39,7 +39,19 @@ jobs:
           echo "Deploying branch: $BRANCH"
           echo "Host: ${{ secrets.VPS_HOST }}"
           echo "User: ${{ secrets.VPS_USER }}"
-          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "echo 'SSH connection successful' && cd ~/knx-viz && ./deploy-staging.sh $BRANCH"
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
+            echo 'SSH connection successful' &&
+            cd ~ &&
+            if [ ! -d 'knx-viz' ]; then
+              git clone https://github.com/candyscode/AI.git knx-viz
+            fi &&
+            cd knx-viz &&
+            git fetch origin &&
+            git checkout $BRANCH &&
+            git pull origin $BRANCH &&
+            chmod +x deploy-staging.sh &&
+            ./deploy-staging.sh $BRANCH
+          "
         env:
           SSH_AUTH_SOCK: ${{ env.SSH_AUTH_SOCK }}
 
