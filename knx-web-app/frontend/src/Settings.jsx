@@ -393,15 +393,6 @@ export default function Settings({ config, fetchConfig, addToast }) {
                         onChange={e => handleUpdateScene(room.id, sc.id, 'sceneNumber', e.target.value === '' ? undefined : parseInt(e.target.value))}
                         title="Scene number (1–64)"
                       />
-                      <select
-                        className="form-input custom-select"
-                        style={{ width: '90px', flexShrink: 0, paddingLeft: '0.4rem', paddingRight: '0.4rem' }}
-                        value={sc.category || 'light'}
-                        onChange={e => handleUpdateScene(room.id, sc.id, 'category', e.target.value)}
-                      >
-                        <option value="light">Lights</option>
-                        <option value="shade">Shades</option>
-                      </select>
                       <input
                         className="form-input"
                         value={sc.name}
