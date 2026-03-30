@@ -34,6 +34,8 @@ cp .env.example .env
 FRONTEND_IMAGE=ghcr.io/candyscode/ai-frontend
 BACKEND_IMAGE=ghcr.io/candyscode/ai-backend
 IMAGE_TAG=latest
+# Frontend port: 80 for localhost, 8080 for VPS (if port 80 is already in use)
+FRONTEND_PORT=8080
 BACKEND_PORT=3001
 KNX_IP=192.168.1.85
 KNX_PORT=3671
