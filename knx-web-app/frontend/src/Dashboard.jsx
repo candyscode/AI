@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { triggerAction } from './configApi';
-import { Lightbulb, Gamepad2, Blinds } from 'lucide-react';
-
+import { 
+  Lightbulb, 
+  Gamepad2, Blinds, 
+  Lock, LockOpen
+} from 'lucide-react';
 const BlindsCard = ({ func, istPosition, isMoving, onAction }) => {
   const [sollPosition, setSollPosition] = useState(istPosition !== undefined ? istPosition : 0);
   const initializedRef = useRef(false);
@@ -91,6 +94,23 @@ const BlindsCard = ({ func, istPosition, isMoving, onAction }) => {
 export default function Dashboard({ config, deviceStates = {}, addToast }) {
   const { rooms } = config;
 
+  const handleSceneAction = async (room, scene) => {
+    try {
+      const res = await triggerAction({
+        groupAddress: room.sceneGroupAddress,
+        type: 'scene',
+        sceneNumber: scene.sceneNumber,
+      });
+      if (res.success) {
+        addToast(`${scene.name}`, 'success');
+      } else {
+        addToast(`Failed: ${res.error}`, 'error');
+      }
+    } catch (e) {
+      addToast('Error communicating with backend server (is it running?)', 'error');
+    }
+  };
+
   const handleAction = async (func) => {
     try {
       let valueToSend = func.value !== undefined ? func.value : true;
@@ -113,7 +133,7 @@ export default function Dashboard({ config, deviceStates = {}, addToast }) {
         addToast(`Failed: ${res.error}`, 'error');
       }
     } catch(e) {
-      addToast(`Error communicating with backend`, 'error');
+      addToast(`Error communicating with backend server (is it running?)`, 'error');
     }
   };
 
@@ -128,65 +148,127 @@ export default function Dashboard({ config, deviceStates = {}, addToast }) {
 
   return (
     <div className="room-grid">
-      {rooms.map((room) => (
-        <div key={room.id} className="room-card">
-          <div className="room-header">
-            <h2>{room.name}</h2>
-          </div>
-          
-          <div className="functions-grid">
-            {room.functions.map((func) => {
-              const currentState = deviceStates[func.statusGroupAddress];
-              
-              if (func.type === 'percentage') {
-                const istPosition = currentState !== undefined ? currentState : 0;
-                const isMoving = func.movingGroupAddress
-                  ? deviceStates[func.movingGroupAddress]
-                  : undefined;
-                return (
-                  <BlindsCard 
-                    key={func.id} 
-                    func={func} 
-                    istPosition={istPosition}
-                    isMoving={isMoving}
-                    onAction={handleAction} 
-                  />
-                );
-              }
-
-              const isSwitch = func.type === 'switch';
-              const isOn = isSwitch ? !!currentState : false;
-              
-              return (
-                <button 
-                  key={func.id} 
-                  className="action-btn"
-                  onClick={() => handleAction(func)}
-                  style={isSwitch && isOn ? { borderColor: 'var(--success-color)' } : {}}
-                >
-                  <div style={{ color: isSwitch && isOn ? 'var(--success-color)' : 'var(--accent-color)', background: isSwitch && isOn ? 'rgba(16, 185, 129, 0.1)' : 'rgba(59, 130, 246, 0.1)', padding: '0.5rem', borderRadius: '50%', marginBottom: '0.25rem' }}>
-                    {func.type === 'scene' ? <Gamepad2 size={24} /> : 
-                     func.type === 'light' ? <Lightbulb size={24} /> : 
-                     <Lightbulb size={24} />}
-                  </div>
-                  <span>{func.name}</span>
-                  
-                  {isSwitch && (
-                    <div className={`toggle-switch ${isOn ? 'active' : ''}`}>
-                      <div className="toggle-knob"></div>
+      {rooms.map((room) => {
+        const roomScenes = room.scenes || [];
+        const hasScenes = roomScenes.length > 0;
+        const hasFunctions = room.functions && room.functions.length > 0;
+        
+        return (
+          <div key={room.id} className="room-card">
+            <div className="room-header">
+              <h2>{room.name}</h2>
+            </div>
+            
+            {/* Room scenes — categorized by light and shade */}
+            {hasScenes && (
+              <div className="scene-categories">
+                {roomScenes.some(sc => (sc.category || 'light') === 'light') && (
+                  <div className="scene-category">
+                    <h4 className="scene-category-title">Lights</h4>
+                    <div className="scene-pills">
+                      {roomScenes.filter(sc => (sc.category || 'light') === 'light').map(sc => (
+                        <button
+                          key={sc.id}
+                          className="scene-pill"
+                          onClick={() => handleSceneAction(room, sc)}
+                        >
+                          {sc.name || `Scene ${sc.sceneNumber}`}
+                        </button>
+                      ))}
                     </div>
-                  )}
-                </button>
-              );
-            })}
-            {(!room.functions || room.functions.length === 0) && (
+                  </div>
+                )}
+                
+                {roomScenes.some(sc => sc.category === 'shade') && (
+                  <div className="scene-category" style={{ marginTop: '0.4rem' }}>
+                    <h4 className="scene-category-title">Shades</h4>
+                    <div className="scene-pills">
+                      {roomScenes.filter(sc => sc.category === 'shade').map(sc => (
+                        <button
+                          key={sc.id}
+                          className="scene-pill shade-pill"
+                          onClick={() => handleSceneAction(room, sc)}
+                        >
+                          {sc.name || `Scene ${sc.sceneNumber}`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Regular functions (switches, blinds, standalone scenes) */}
+            {hasFunctions && (
+              <div className="scene-category" style={{ marginTop: hasScenes ? '0.4rem' : '0' }}>
+                <h4 className="scene-category-title">Functions</h4>
+                <div className="functions-grid">
+                  {room.functions.map((func) => {
+                    const currentState = deviceStates[func.statusGroupAddress];
+                    
+                    if (func.type === 'percentage') {
+                      const istPosition = currentState !== undefined ? currentState : 0;
+                      const isMoving = func.movingGroupAddress
+                        ? deviceStates[func.movingGroupAddress]
+                        : undefined;
+                      return (
+                        <BlindsCard 
+                          key={func.id} 
+                          func={func} 
+                          istPosition={istPosition}
+                          isMoving={isMoving}
+                          onAction={handleAction} 
+                        />
+                      );
+                    }
+
+                    const isSwitch = func.type === 'switch';
+                    const isOn = isSwitch ? !!currentState : false;
+                    
+                    const renderSwitchIcon = () => {
+                      if (func.type === 'scene') return <Gamepad2 size={24} />;
+                      
+                      let effectiveIsOn = isOn;
+                      if (func.invertIcon) effectiveIsOn = !effectiveIsOn;
+                      
+                      const iconType = func.iconType || 'lightbulb';
+                      
+                      if (iconType === 'lock') return effectiveIsOn ? <Lock size={24} /> : <LockOpen size={24} />;
+                      
+                      return <Lightbulb size={24} fill={effectiveIsOn ? 'currentColor' : 'none'} />;
+                    };
+                    
+                    return (
+                      <button 
+                        key={func.id} 
+                        className={`action-btn ${isSwitch && isOn ? 'active' : ''}`}
+                        onClick={() => handleAction(func)}
+                      >
+                        <div className="action-icon-wrapper">
+                          {renderSwitchIcon()}
+                        </div>
+                        <span className="action-name">{func.name}</span>
+                        
+                        {isSwitch && (
+                          <div className={`toggle-switch ${isOn ? 'active' : ''}`}>
+                            <div className="toggle-knob"></div>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            
+            {(!hasFunctions && !hasScenes) && (
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                 No functions available
               </div>
             )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

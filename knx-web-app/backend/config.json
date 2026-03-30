@@ -2,35 +2,80 @@
   "knxIp": "192.168.1.85",
   "rooms": [
     {
-      "id": "1774781219020",
-      "name": "Korbi-Zimmer",
-      "functions": [
-        {
-          "id": "1774781266154",
-          "name": "Hell",
-          "type": "scene",
-          "groupAddress": "2/5/1",
-          "sceneNumber": 2
-        }
-      ]
-    },
-    {
-      "id": "1774780884638",
+      "id": "1774878946008",
       "name": "Wohnzimmer",
-      "functions": [
+      "sceneGroupAddress": "3/5/0",
+      "scenes": [
         {
-          "id": "1774780891658",
+          "id": "1774878961391_1",
           "name": "Aus",
-          "type": "scene",
-          "groupAddress": "2/5/0",
-          "sceneNumber": 1
+          "sceneNumber": 1,
+          "category": "light"
         },
         {
-          "id": "1774780946221",
+          "id": "1774878961391_2",
           "name": "Hell",
-          "type": "scene",
-          "groupAddress": "2/5/0",
-          "sceneNumber": 2
+          "sceneNumber": 2,
+          "category": "light"
+        },
+        {
+          "id": "1774878977894",
+          "name": "Kochen",
+          "sceneNumber": 11,
+          "category": "light"
+        },
+        {
+          "id": "1774879010340",
+          "name": "Relax",
+          "sceneNumber": 5,
+          "category": "light"
+        },
+        {
+          "id": "1774879031761",
+          "name": "Essen",
+          "sceneNumber": 4,
+          "category": "light"
+        },
+        {
+          "id": "1774879126541",
+          "name": "TV",
+          "sceneNumber": 3,
+          "category": "light"
+        },
+        {
+          "id": "1774879155574",
+          "name": "Offen",
+          "sceneNumber": 6,
+          "category": "shade"
+        },
+        {
+          "id": "1774879164740",
+          "name": "Geschlossen",
+          "sceneNumber": 7,
+          "category": "shade"
+        },
+        {
+          "id": "1774879171523",
+          "name": "Horizontal",
+          "sceneNumber": 9,
+          "category": "shade"
+        },
+        {
+          "id": "1774879186923",
+          "name": "Privacy",
+          "sceneNumber": 12,
+          "category": "shade"
+        }
+      ],
+      "functions": [
+        {
+          "id": "1774879372076",
+          "name": "Links sperren",
+          "type": "switch",
+          "groupAddress": "3/2/201",
+          "statusGroupAddress": "3/7/47",
+          "iconType": "lock",
+          "invertIcon": false
         }
       ]
     },
@@ -38,20 +83,6 @@
       "id": "1774709374928",
       "name": "Büro",
       "functions": [
-        {
-          "id": "1774710180077",
-          "name": "Aus",
-          "type": "scene",
-          "groupAddress": "3/5/5",
-          "sceneNumber": 1
-        },
-        {
-          "id": "1774709875210",
-          "name": "Hell",
-          "type": "scene",
-          "groupAddress": "3/5/5",
-          "sceneNumber": 2
-        },
         {
           "id": "1774710929240",
           "name": "Linke Terassentür sperren",
@@ -68,6 +99,26 @@
           "sceneNumber": 1,
           "statusGroupAddress": "3/7/13",
           "movingGroupAddress": "3/7/56"
+        },
+        {
+          "id": "1774876361942",
+          "name": "Test",
+          "type": "scene",
+          "groupAddress": "3/5/5",
+          "sceneNumber": 1
+        }
+      ],
+      "sceneGroupAddress": "3/5/5",
+      "scenes": [
+        {
+          "id": "1774875918708",
+          "name": "Aus",
+          "sceneNumber": 1
+        },
+        {
+          "id": "1774875933957",
+          "name": "Hell",
+          "sceneNumber": 2
         }
       ]
     }
