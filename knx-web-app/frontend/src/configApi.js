@@ -22,3 +22,38 @@ export const triggerAction = async (actionData) => {
   });
   return res.json();
 };
+
+// ── Hue API ──
+
+export const discoverHueBridge = async () => {
+  const res = await fetch(`${API_BASE}/hue/discover`, { method: 'POST' });
+  return res.json();
+};
+
+export const pairHueBridge = async (bridgeIp) => {
+  const res = await fetch(`${API_BASE}/hue/pair`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bridgeIp })
+  });
+  return res.json();
+};
+
+export const unpairHueBridge = async () => {
+  const res = await fetch(`${API_BASE}/hue/unpair`, { method: 'POST' });
+  return res.json();
+};
+
+export const getHueLights = async () => {
+  const res = await fetch(`${API_BASE}/hue/lights`);
+  return res.json();
+};
+
+export const triggerHueAction = async (lightId, on) => {
+  const res = await fetch(`${API_BASE}/hue/action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lightId, on })
+  });
+  return res.json();
+};

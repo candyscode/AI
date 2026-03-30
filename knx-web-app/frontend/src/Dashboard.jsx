@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { triggerAction } from './configApi';
+import { triggerAction, triggerHueAction } from './configApi';
 import { 
   Lightbulb, 
   Gamepad2, Blinds, 
@@ -91,7 +91,7 @@ const BlindsCard = ({ func, istPosition, isMoving, onAction }) => {
   );
 };
 
-export default function Dashboard({ config, deviceStates = {}, addToast }) {
+export default function Dashboard({ config, deviceStates = {}, hueStates = {}, setDeviceStates, setHueStates, addToast }) {
   const { rooms } = config;
 
   const handleSceneAction = async (room, scene) => {
@@ -112,28 +112,75 @@ export default function Dashboard({ config, deviceStates = {}, addToast }) {
   };
 
   const handleAction = async (func) => {
+    let { groupAddress, type, sceneNumber, value } = func;
+    
+    // For blind percentage control, 'actionGA' is used but type might be different in UI logic
+    // For switches, we toggle the current state optimistically
+    const currentState = deviceStates[func.statusGroupAddress || groupAddress];
+    
+    let nextState = value;
+    if (type === 'switch' && nextState === undefined) {
+      nextState = !currentState;
+    }
+
+    let valueToSend = nextState;
+    if (type === 'switch') {
+      valueToSend = nextState ? '1' : '0';
+    }
+
+    // OPTIMISTIC UPDATE FOR KNX
+    if (type === 'switch' && setDeviceStates && nextState !== undefined) {
+      setDeviceStates(prev => ({ ...prev, [func.statusGroupAddress || groupAddress]: nextState }));
+    }
+
     try {
-      let valueToSend = func.value !== undefined ? func.value : true;
-      if (func.type === 'switch' && func.value === undefined) {
-        const currentState = !!deviceStates[func.statusGroupAddress];
-        valueToSend = !currentState;
-      }
-      
       const res = await triggerAction({
-        groupAddress: func.groupAddress,
-        type: func.type,
-        sceneNumber: func.sceneNumber,
+        groupAddress,
+        type,
+        sceneNumber,
         value: valueToSend
       });
-      if(res.success) {
-        if (func.type !== 'switch' && func.type !== 'percentage') {
+      if (res.success) {
+        if (type !== 'scene' && type !== 'percentage') {
+          // Toast omitted so it's not spammy on switch toggle
+        } else {
           addToast(`Triggered ${func.name}`, 'success');
         }
       } else {
+        // Revert optimistic update on failure
+        if (type === 'switch' && setDeviceStates) {
+          setDeviceStates(prev => ({ ...prev, [func.statusGroupAddress || groupAddress]: currentState }));
+        }
         addToast(`Failed: ${res.error}`, 'error');
       }
     } catch(e) {
+      // Revert optimistic update on error
+      if (type === 'switch' && setDeviceStates) {
+        setDeviceStates(prev => ({ ...prev, [func.statusGroupAddress || groupAddress]: currentState }));
+      }
       addToast(`Error communicating with backend server (is it running?)`, 'error');
+    }
+  };
+
+  const handleHueAction = async (func) => {
+    const currentOn = !!hueStates[`hue_${func.hueLightId}`];
+    
+    // OPTIMISTIC UPDATE FOR HUE
+    if (setHueStates) {
+      setHueStates(prev => ({ ...prev, [`hue_${func.hueLightId}`]: !currentOn }));
+    }
+
+    try {
+      const res = await triggerHueAction(func.hueLightId, !currentOn);
+      if (!res.success) {
+        // Revert on failure
+        if (setHueStates) setHueStates(prev => ({ ...prev, [`hue_${func.hueLightId}`]: currentOn }));
+        addToast(`Hue error: ${res.error}`, 'error');
+      }
+    } catch (e) {
+      // Revert on error
+      if (setHueStates) setHueStates(prev => ({ ...prev, [`hue_${func.hueLightId}`]: currentOn }));
+      addToast('Error communicating with Hue Bridge', 'error');
     }
   };
 
@@ -219,6 +266,26 @@ export default function Dashboard({ config, deviceStates = {}, addToast }) {
                           isMoving={isMoving}
                           onAction={handleAction} 
                         />
+                      );
+                    }
+
+                    // Hue lights — render like a switch with Lightbulb
+                    if (func.type === 'hue') {
+                      const hueOn = !!hueStates[`hue_${func.hueLightId}`];
+                      return (
+                        <button 
+                          key={func.id} 
+                          className={`action-btn ${hueOn ? 'active' : ''}`}
+                          onClick={() => handleHueAction(func)}
+                        >
+                          <div className="action-icon-wrapper">
+                            <Lightbulb size={24} fill={hueOn ? 'currentColor' : 'none'} />
+                          </div>
+                          <span className="action-name">{func.name}</span>
+                          <div className={`toggle-switch ${hueOn ? 'active' : ''}`}>
+                            <div className="toggle-knob"></div>
+                          </div>
+                        </button>
                       );
                     }
 

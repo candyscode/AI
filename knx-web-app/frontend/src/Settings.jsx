@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { updateConfig } from './configApi';
+import { createPortal } from 'react-dom';
+import { updateConfig, discoverHueBridge, pairHueBridge, unpairHueBridge, getHueLights } from './configApi';
 import { 
   Plus, Trash2, Save, ArrowUp, ArrowDown, ChevronDown, HelpCircle, Sparkles,
   Lightbulb, Lock
@@ -131,11 +132,107 @@ function GAField({ label, tooltipKey, optional, value, onChange, placeholder, ty
   );
 }
 
-export default function Settings({ config, fetchConfig, addToast }) {
+export default function Settings({ config, fetchConfig, addToast, hueStatus, setHueStatus }) {
   const [ip, setIp] = useState(config.knxIp || '');
   const [port, setPort] = useState(config.knxPort || 3671);
   const [rooms, setRooms] = useState(() => migrateRooms(config.rooms || []));
   const [newRoomName, setNewRoomName] = useState('');
+
+  // Hue wizard state
+  const [hueStep, setHueStep] = useState('idle'); // idle | discovering | found | waiting | pairing | paired
+  const [hueBridgeIp, setHueBridgeIp] = useState(config.hue?.bridgeIp || '');
+  const [hueError, setHueError] = useState('');
+
+  // Hue lamp selection modal
+  const [hueLampModal, setHueLampModal] = useState({ open: false, roomId: null });
+  const [hueLamps, setHueLamps] = useState([]);
+  const [hueLampsLoading, setHueLampsLoading] = useState(false);
+
+  // Hue wizard handlers
+  const handleHueDiscover = async () => {
+    setHueStep('discovering');
+    setHueError('');
+    try {
+      const res = await discoverHueBridge();
+      if (res.success && res.bridges.length > 0) {
+        setHueBridgeIp(res.bridges[0].internalipaddress);
+        setHueStep('found');
+      } else {
+        setHueError('No Hue Bridge found on your network.');
+        setHueStep('idle');
+      }
+    } catch {
+      setHueError('Discovery failed. Is the backend running?');
+      setHueStep('idle');
+    }
+  };
+
+  const handleHuePair = async () => {
+    setHueStep('pairing');
+    setHueError('');
+    try {
+      const res = await pairHueBridge(hueBridgeIp);
+      if (res.success) {
+        setHueStep('paired');
+        setHueStatus({ paired: true, bridgeIp: hueBridgeIp });
+        addToast('Hue Bridge paired successfully!', 'success');
+        fetchConfig();
+      } else {
+        setHueError(res.error || 'Pairing failed.');
+        setHueStep('found');
+      }
+    } catch {
+      setHueError('Pairing request failed.');
+      setHueStep('found');
+    }
+  };
+
+  const handleHueUnpair = async () => {
+    try {
+      await unpairHueBridge();
+      setHueStatus({ paired: false, bridgeIp: '' });
+      setHueBridgeIp('');
+      setHueStep('idle');
+      addToast('Hue Bridge unpaired', 'success');
+      fetchConfig();
+    } catch {
+      addToast('Failed to unpair', 'error');
+    }
+  };
+
+  // Hue lamp modal handlers
+  const openHueLampModal = async (roomId) => {
+    setHueLampModal({ open: true, roomId });
+    setHueLampsLoading(true);
+    try {
+      const res = await getHueLights();
+      if (res.success) {
+        setHueLamps(res.lights);
+      } else {
+        addToast('Failed to load Hue lights: ' + (res.error || ''), 'error');
+      }
+    } catch {
+      addToast('Could not reach Hue Bridge', 'error');
+    }
+    setHueLampsLoading(false);
+  };
+
+  const selectHueLamp = (lamp) => {
+    const roomId = hueLampModal.roomId;
+    const updated = rooms.map(r => r.id !== roomId ? r : {
+      ...r, functions: [...r.functions, {
+        id: Date.now().toString(),
+        name: lamp.name,
+        originalHueName: lamp.name,
+        type: 'hue',
+        hueLightId: lamp.id,
+        iconType: 'lightbulb',
+      }]
+    });
+    setRooms(updated);
+    setHueLampModal({ open: false, roomId: null });
+    addToast(`Added "${lamp.name}"`, 'success');
+  };
 
   // One-time migration: move scene-type functions into room.scenes[]
   function migrateRooms(inputRooms) {
@@ -327,6 +424,91 @@ export default function Settings({ config, fetchConfig, addToast }) {
         </div>
       </div>
 
+      {/* Philips Hue */}
+      <div className="settings-section">
+        <h2>Philips Hue</h2>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
+          Connect your Hue Bridge to control Hue lights alongside KNX.
+        </p>
+
+        {hueStatus.paired ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--success-color)' }}></div>
+              <span style={{ color: 'var(--success-color)', fontWeight: 600, fontSize: '0.85rem' }}>Paired</span>
+              <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>({hueStatus.bridgeIp})</span>
+            </div>
+            <button className="btn-danger" style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }} onClick={handleHueUnpair}>Unpair</button>
+          </div>
+        ) : (
+          <div>
+            {hueStep === 'idle' && (
+              <div>
+                <button className="btn-primary" onClick={handleHueDiscover}>
+                  <Sparkles size={14} /> Discover Bridge
+                </button>
+                
+                <div style={{ marginTop: '1.25rem' }}>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                    Or enter IP manually if discovery fails:
+                  </p>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input 
+                      className="form-input" 
+                      style={{ width: '180px' }}
+                      placeholder="e.g. 192.168.1.100" 
+                      value={hueBridgeIp} 
+                      onChange={e => setHueBridgeIp(e.target.value)}
+                    />
+                    <button 
+                      className="btn-primary" 
+                      style={{ background: 'rgba(255,255,255,0.1)' }}
+                      onClick={() => {
+                        if(hueBridgeIp) { 
+                          setHueError(''); 
+                          setHueStep('found'); 
+                        }
+                      }}
+                    >
+                      Use IP
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {hueStep === 'discovering' && (
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Searching for Hue Bridges on your network…</div>
+            )}
+
+            {hueStep === 'found' && (
+              <div>
+                <p style={{ color: 'var(--text-primary)', marginBottom: '0.75rem', fontSize: '0.9rem' }}>
+                  Bridge found at <strong>{hueBridgeIp}</strong>
+                </p>
+                <div style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)', borderRadius: '10px', padding: '1rem 1.25rem', marginBottom: '1rem' }}>
+                  <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: 1.5 }}>
+                    👉 Press the <strong>Link button</strong> on your Hue Bridge, then click <strong>Pair</strong> within 30 seconds.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button className="btn-primary" onClick={handleHuePair} style={{ background: 'var(--success-color)' }}>Pair</button>
+                  <button className="btn-primary" style={{ background: 'rgba(255,255,255,0.08)' }} onClick={() => setHueStep('idle')}>Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {hueStep === 'pairing' && (
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Pairing…</div>
+            )}
+
+            {hueError && (
+              <div style={{ color: '#ef4444', fontSize: '0.85rem', marginTop: '0.75rem' }}>{hueError}</div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Rooms */}
       <div className="settings-section">
         <h2>Rooms &amp; Functions</h2>
@@ -462,84 +644,102 @@ export default function Settings({ config, fetchConfig, addToast }) {
 
                 {room.functions.map((func, fi) => {
                   const info = TYPE_OPTIONS.find(o => o.value === func.type) || TYPE_OPTIONS[0];
+                  const isHue = func.type === 'hue';
                   return (
-                    <div key={func.id} className="function-card">
-                      <div className="function-layout">
+                    <div key={func.id} className={`function-card ${isHue ? 'hue-card' : ''}`}>
+                      <div className="function-layout" style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
 
                         {/* Sort buttons */}
                         <div className="func-sort">
                           <button className="sort-btn" onClick={() => moveFunc(room.id, fi, 'up')} disabled={fi === 0} title="Move up"><ArrowUp size={12}/></button>
                           <button className="sort-btn" onClick={() => moveFunc(room.id, fi, 'down')} disabled={fi === room.functions.length-1} title="Move down"><ArrowDown size={12}/></button>
                         </div>
-
-                        {/* LEFT: Name + Type */}
-                        <div className="func-left-col">
-                          <div className="settings-field">
-                            <label className="settings-field-label">Name</label>
-                            <input className="form-input" value={func.name}
-                              onChange={e => handleUpdateFunction(room.id, func.id, 'name', e.target.value)}
-                              placeholder="e.g. Lock Door" />
+                        
+                        {isHue ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, paddingLeft: '0.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+                              <span style={{ fontSize: '0.7rem', fontWeight: 700, background: 'rgba(167, 139, 250, 0.2)', color: '#c4b5fd', padding: '0.15rem 0.4rem', borderRadius: '4px', letterSpacing: '0.05em' }}>HUE</span>
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                Original: <strong>{func.originalHueName || func.name}</strong>
+                              </span>
+                            </div>
+                            <div className="settings-field" style={{ marginBottom: 0 }}>
+                              <input className="form-input" style={{ width: 'min(100%, 300px)' }} value={func.name}
+                                onChange={e => handleUpdateFunction(room.id, func.id, 'name', e.target.value)}
+                                placeholder="e.g. Living Room Spot" />
+                            </div>
                           </div>
-                          <div className="settings-field" style={{ marginTop: '0.6rem' }}>
-                            <label className="settings-field-label">Type</label>
-                            <TypeSelect value={func.type} onChange={upd(room.id, func.id, 'type')} />
-                          </div>
-                        </div>
-
-                        {/* RIGHT: GA fields */}
-                        <div className="func-right-col">
-                          <GAField label="Action GA" tooltipKey="action"
-                            value={func.groupAddress}
-                            onChange={upd(room.id, func.id, 'groupAddress')}
-                            placeholder="e.g. 1/5/0" />
-
-                          {func.type === 'scene' && (
-                            <GAField label="Scene Number" tooltipKey="scene"
-                              value={func.sceneNumber}
-                              onChange={upd(room.id, func.id, 'sceneNumber')}
-                              placeholder="1–64" type="number" min={1} max={64} />
-                          )}
-
-                          {(func.type === 'switch' || func.type === 'percentage') && (
-                            <GAField label="Feedback GA" tooltipKey="feedback"
-                              value={func.statusGroupAddress}
-                              onChange={upd(room.id, func.id, 'statusGroupAddress')}
-                              placeholder="e.g. 1/5/1" />
-                          )}
-
-                          {func.type === 'switch' && (
-                            <div className="settings-field" style={{ marginTop: '0.6rem' }}>
-                              <label className="settings-field-label" style={{ display: 'block', marginBottom: '0.2rem' }}>Icon</label>
-                              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                <IconSelect value={func.iconType || 'lightbulb'} onChange={upd(room.id, func.id, 'iconType')} />
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                  <input 
-                                    type="checkbox" 
-                                    checked={!!func.invertIcon} 
-                                    onChange={(e) => upd(room.id, func.id, 'invertIcon')(e.target.checked)} 
-                                  />
-                                  Invert Icons
-                                </label>
+                        ) : (
+                          <>
+                            {/* LEFT: Name + Type for KNX */}
+                            <div className="func-left-col">
+                              <div className="settings-field">
+                                <label className="settings-field-label">Name</label>
+                                <input className="form-input" value={func.name}
+                                  onChange={e => handleUpdateFunction(room.id, func.id, 'name', e.target.value)}
+                                  placeholder="e.g. Lock Door" />
+                              </div>
+                              <div className="settings-field" style={{ marginTop: '0.6rem' }}>
+                                <label className="settings-field-label">Type</label>
+                                <TypeSelect value={func.type} onChange={upd(room.id, func.id, 'type')} />
                               </div>
                             </div>
-                          )}
 
-                          {func.type === 'percentage' && (
-                            <GAField label="Moving GA" tooltipKey="moving" optional
-                              value={func.movingGroupAddress}
-                              onChange={upd(room.id, func.id, 'movingGroupAddress')}
-                              placeholder="e.g. 1/5/2" />
-                          )}
-                        </div>
+                            {/* RIGHT: KNX Group Addresses */}
+                            <div className="func-right-col">
+                              <GAField label="Action GA" tooltipKey="action"
+                                value={func.groupAddress}
+                                onChange={upd(room.id, func.id, 'groupAddress')}
+                                placeholder="e.g. 1/5/0" />
 
-                        {/* Delete */}
-                        <div className="func-delete">
-                          <button className="btn-danger" style={{ padding: '0.55rem 0.65rem' }}
+                              {func.type === 'scene' && (
+                                <GAField label="Scene Number" tooltipKey="scene"
+                                  value={func.sceneNumber}
+                                  onChange={upd(room.id, func.id, 'sceneNumber')}
+                                  placeholder="1–64" type="number" min={1} max={64} />
+                              )}
+
+                              {(func.type === 'switch' || func.type === 'percentage') && (
+                                <GAField label="Feedback GA" tooltipKey="feedback"
+                                  value={func.statusGroupAddress}
+                                  onChange={upd(room.id, func.id, 'statusGroupAddress')}
+                                  placeholder="e.g. 1/5/1" />
+                              )}
+
+                              {func.type === 'switch' && (
+                                <div className="settings-field" style={{ marginTop: '0.6rem' }}>
+                                  <label className="settings-field-label" style={{ display: 'block', marginBottom: '0.2rem' }}>Icon</label>
+                                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                    <IconSelect value={func.iconType || 'lightbulb'} onChange={upd(room.id, func.id, 'iconType')} />
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                      <input 
+                                        type="checkbox" 
+                                        checked={!!func.invertIcon} 
+                                        onChange={(e) => upd(room.id, func.id, 'invertIcon')(e.target.checked)} 
+                                      />
+                                      Invert Icons
+                                    </label>
+                                  </div>
+                                </div>
+                              )}
+
+                              {func.type === 'percentage' && (
+                                <GAField label="Moving GA" tooltipKey="moving" optional
+                                  value={func.movingGroupAddress}
+                                  onChange={upd(room.id, func.id, 'movingGroupAddress')}
+                                  placeholder="e.g. 1/5/2" />
+                              )}
+                            </div>
+                          </>
+                        )}
+
+                        {/* Delete button (for ALL types, including Hue) - vertically centered and pushed to the right */}
+                        <div style={{ display: 'flex', alignItems: 'center', marginLeft: 'auto', alignSelf: 'stretch', paddingLeft: '1rem' }}>
+                          <button className="btn-danger" style={{ padding: '0.5rem 0.6rem' }}
                             onClick={() => handleDeleteFunction(room.id, func.id)} title="Delete function">
-                            <Trash2 size={14} />
+                            <Trash2 size={16} />
                           </button>
                         </div>
-
                       </div>
                     </div>
                   );
@@ -551,11 +751,17 @@ export default function Settings({ config, fetchConfig, addToast }) {
                   </p>
                 )}
 
-                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
                   <button className="btn-primary" style={{ background: 'rgba(255,255,255,0.08)', fontSize: '0.85rem', padding: '0.5rem 1rem' }}
                     onClick={() => handleAddFunction(room.id)}>
                     <Plus size={14} /> Add Function
                   </button>
+                  {hueStatus.paired && (
+                    <button className="btn-primary" style={{ background: 'rgba(255,255,255,0.08)', fontSize: '0.85rem', padding: '0.5rem 1rem' }}
+                      onClick={() => openHueLampModal(room.id)}>
+                      <Lightbulb size={14} /> Add Hue Lamp
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -574,6 +780,44 @@ export default function Settings({ config, fetchConfig, addToast }) {
           )}
         </div>
       </div>
+
+      {/* Hue Lamp Selection Modal */}
+      {hueLampModal.open && createPortal(
+        <div className="modal-overlay" onClick={() => setHueLampModal({ open: false, roomId: null })}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 1rem 0' }}>Select Hue Lamp</h3>
+
+            {hueLampsLoading ? (
+              <p style={{ color: 'var(--text-secondary)' }}>Loading lamps…</p>
+            ) : hueLamps.length === 0 ? (
+              <p style={{ color: 'var(--text-secondary)' }}>No Hue lights found.</p>
+            ) : (
+              <div className="hue-lamp-list">
+                {hueLamps.map(lamp => (
+                  <button key={lamp.id} className="hue-lamp-item" onClick={() => selectHueLamp(lamp)}>
+                    <Lightbulb size={18} style={{ color: lamp.on ? 'var(--success-color)' : 'var(--text-secondary)', flexShrink: 0 }} fill={lamp.on ? 'currentColor' : 'none'} />
+                    <div style={{ flex: 1, textAlign: 'left' }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{lamp.name}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                        {lamp.type} · {lamp.reachable ? 'Reachable' : 'Unreachable'}
+                      </div>
+                    </div>
+                    <Plus size={16} style={{ color: 'var(--accent-color)', flexShrink: 0 }} />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div style={{ textAlign: 'right', marginTop: '1rem' }}>
+              <button className="btn-primary" style={{ background: 'rgba(255,255,255,0.08)', fontSize: '0.85rem', padding: '0.4rem 1rem' }}
+                onClick={() => setHueLampModal({ open: false, roomId: null })}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
     </div>
   );

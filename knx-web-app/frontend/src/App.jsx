@@ -7,9 +7,11 @@ import { getConfig } from './configApi';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [config, setConfig] = useState({ knxIp: '', knxPort: 3671, rooms: [] });
+  const [config, setConfig] = useState({ knxIp: '', knxPort: 3671, hue: { bridgeIp: '', apiKey: '' }, rooms: [] });
   const [knxStatus, setKnxStatus] = useState({ connected: false, msg: 'Connecting...' });
+  const [hueStatus, setHueStatus] = useState({ paired: false, bridgeIp: '' });
   const [deviceStates, setDeviceStates] = useState({});
+  const [hueStates, setHueStates] = useState({});
   const [toasts, setToasts] = useState([]);
 
   const addToast = (msg, type = 'info') => {
@@ -55,6 +57,19 @@ function App() {
       setDeviceStates(prev => ({ ...prev, [update.groupAddress]: update.value }));
     });
 
+    // Hue events
+    socket.on('hue_status', (status) => {
+      setHueStatus(status);
+    });
+
+    socket.on('hue_states', (states) => {
+      setHueStates(prev => ({ ...prev, ...states }));
+    });
+
+    socket.on('hue_state_update', (update) => {
+      setHueStates(prev => ({ ...prev, [update.lightId]: update.on }));
+    });
+
     return () => {
       socket.disconnect();
     };
@@ -94,8 +109,8 @@ function App() {
       </header>
 
       <main>
-        {activeTab === 'dashboard' && <Dashboard config={config} deviceStates={deviceStates} addToast={addToast} />}
-        {activeTab === 'settings' && <Settings config={config} fetchConfig={fetchConfig} addToast={addToast} />}
+        {activeTab === 'dashboard' && <Dashboard config={config} deviceStates={deviceStates} setDeviceStates={setDeviceStates} hueStates={hueStates} setHueStates={setHueStates} addToast={addToast} />}
+        {activeTab === 'settings' && <Settings config={config} fetchConfig={fetchConfig} hueStatus={hueStatus} setHueStatus={setHueStatus} addToast={addToast} socket={io('http://localhost:3001')} />}
       </main>
 
       {/* Toasts overlay */}

@@ -6,6 +6,7 @@ const { Server } = require('socket.io');
 const fs = require('fs');
 const path = require('path');
 const KnxService = require('./knxService');
+const HueService = require('./hueService');
 
 const app = express();
 const server = http.createServer(app);
@@ -19,11 +20,13 @@ app.use(bodyParser.json());
 const CONFIG_FILE = path.join(__dirname, 'config.json');
 
 const knxService = new KnxService(io);
+const hueService = new HueService();
 
 // Default empty config
 let config = {
   knxIp: '',
   knxPort: 3671,
+  hue: { bridgeIp: '', apiKey: '' },
   rooms: []
 };
 
@@ -68,6 +71,8 @@ if (fs.existsSync(CONFIG_FILE)) {
     const data = fs.readFileSync(CONFIG_FILE, 'utf8');
     config = JSON.parse(data);
     if (!config.knxPort) config.knxPort = 3671;
+    if (!config.hue) config.hue = { bridgeIp: '', apiKey: '' };
+    hueService.init(config.hue);
     establishConnection();
   } catch(e) {
     console.error('Error parsing config.json', e);
@@ -138,6 +143,91 @@ app.post('/api/action', (req, res) => {
   }
 });
 
+// ══════ Hue API Routes ══════
+
+app.post('/api/hue/discover', async (req, res) => {
+  try {
+    const bridges = await hueService.discoverBridges();
+    res.json({ success: true, bridges });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/hue/pair', async (req, res) => {
+  const { bridgeIp } = req.body;
+  if (!bridgeIp) return res.status(400).json({ success: false, error: 'bridgeIp required' });
+
+  const result = await hueService.pairBridge(bridgeIp);
+  if (result.success) {
+    config.hue = { bridgeIp, apiKey: result.apiKey };
+    saveConfig();
+    startHuePolling();
+  }
+  res.json(result);
+});
+
+app.post('/api/hue/unpair', (req, res) => {
+  hueService.unpair();
+  config.hue = { bridgeIp: '', apiKey: '' };
+  saveConfig();
+  stopHuePolling();
+  res.json({ success: true });
+});
+
+app.get('/api/hue/lights', async (req, res) => {
+  const result = await hueService.getLights();
+  res.json(result);
+});
+
+app.post('/api/hue/action', async (req, res) => {
+  const { lightId, on } = req.body;
+  if (!lightId) return res.status(400).json({ success: false, error: 'lightId required' });
+
+  const result = await hueService.setLightState(lightId, on);
+  if (result.success) {
+    // Immediately broadcast the state change to all connected clients
+    io.emit('hue_state_update', { lightId: `hue_${lightId}`, on: !!on });
+  }
+  res.json(result);
+});
+
+// ── Hue state polling ──
+let huePollingInterval = null;
+
+function startHuePolling() {
+  stopHuePolling();
+  if (!hueService.isPaired) return;
+
+  huePollingInterval = setInterval(async () => {
+    // Collect all Hue light IDs referenced in rooms
+    const hueIds = new Set();
+    config.rooms.forEach(room => {
+      (room.functions || []).forEach(f => {
+        if (f.type === 'hue' && f.hueLightId) hueIds.add(f.hueLightId);
+      });
+    });
+    if (hueIds.size === 0) return;
+
+    const states = await hueService.getLightStates([...hueIds]);
+    if (Object.keys(states).length > 0) {
+      io.emit('hue_states', states);
+    }
+  }, 5000);
+}
+
+function stopHuePolling() {
+  if (huePollingInterval) {
+    clearInterval(huePollingInterval);
+    huePollingInterval = null;
+  }
+}
+
+// Start polling if already paired on boot
+if (hueService.isPaired) {
+  startHuePolling();
+}
+
 // Socket.io connection handling
 io.on('connection', (socket) => {
   console.log('Client connected to UI');
@@ -146,6 +236,9 @@ io.on('connection', (socket) => {
     connected: knxService.isConnected, 
     msg: knxService.isConnected ? 'Connected to bus' : (config.knxIp ? 'Disconnected from bus' : 'No KNX IP Configured') 
   });
+  
+  // Send Hue pairing status
+  socket.emit('hue_status', { paired: hueService.isPaired, bridgeIp: hueService.bridgeIp });
   
   // Broadcast initial parsed KNX values (persisted + live)
   socket.emit('knx_initial_states', knxService.deviceStates);

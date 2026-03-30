@@ -76,52 +76,29 @@
           "statusGroupAddress": "3/7/47",
           "iconType": "lock",
           "invertIcon": false
-        }
-      ]
-    },
-    {
-      "id": "1774709374928",
-      "name": "Büro",
-      "functions": [
-        {
-          "id": "1774710929240",
-          "name": "Linke Terassentür sperren",
-          "type": "switch",
-          "groupAddress": "3/2/201",
-          "sceneNumber": 1,
-          "statusGroupAddress": "3/7/47"
         },
         {
-          "id": "1774712092753",
-          "name": "Rollo",
-          "type": "percentage",
-          "groupAddress": "3/2/0",
-          "sceneNumber": 1,
-          "statusGroupAddress": "3/7/13",
-          "movingGroupAddress": "3/7/56"
+          "id": "1774897468206",
+          "name": "Küche Ambientelicht",
+          "originalHueName": "Küche Ambientelicht",
+          "type": "hue",
+          "hueLightId": "2",
+          "iconType": "lightbulb"
         },
         {
-          "id": "1774876361942",
-          "name": "Test",
-          "type": "scene",
-          "groupAddress": "3/5/5",
-          "sceneNumber": 1
-        }
-      ],
-      "sceneGroupAddress": "3/5/5",
-      "scenes": [
-        {
-          "id": "1774875918708",
-          "name": "Aus",
-          "sceneNumber": 1
-        },
-        {
-          "id": "1774875933957",
-          "name": "Hell",
-          "sceneNumber": 2
+          "id": "1774898668274",
+          "name": "Leselampe",
+          "originalHueName": "Leselampe",
+          "type": "hue",
+          "hueLightId": "1",
+          "iconType": "lightbulb"
         }
       ]
     }
   ],
-  "knxPort": 3671
+  "knxPort": 3671,
+  "hue": {
+    "bridgeIp": "192.168.1.65",
+    "apiKey": "cuzDERqA9wxDKsMYawVsHB3LzuCdwYRpYKqD5heU"
+  }
 }
