@@ -1,8 +1,25 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { updateConfig, discoverHueBridge, pairHueBridge, unpairHueBridge, getHueLights } from './configApi';
 import { 
-  Plus, Trash2, Save, ArrowUp, ArrowDown, ChevronDown, HelpCircle, Sparkles,
+  Plus, Trash2, Save, ArrowUp, ArrowDown, ChevronDown, HelpCircle, Sparkles, GripVertical,
   Lightbulb, Lock
 } from 'lucide-react';
 
@@ -132,6 +149,278 @@ function GAField({ label, tooltipKey, optional, value, onChange, placeholder, ty
   );
 }
 
+function transformToString(transform) {
+  if (!transform) return undefined;
+  const { x = 0, y = 0, scaleX = 1, scaleY = 1 } = transform;
+  return `translate3d(${x}px, ${y}px, 0) scaleX(${scaleX}) scaleY(${scaleY})`;
+}
+
+function DragHandle({ attributes, listeners, label }) {
+  return (
+    <button
+      type="button"
+      className="drag-handle"
+      aria-label={label}
+      title={label}
+      {...attributes}
+      {...listeners}
+    >
+      <GripVertical size={18} />
+    </button>
+  );
+}
+
+function SceneRowPreview({ scene }) {
+  return (
+    <div className="scene-row drag-overlay-preview">
+      <div className="drag-handle drag-handle-static" aria-hidden="true">
+        <GripVertical size={18} />
+      </div>
+      <span className="scene-number-label">#</span>
+      <input
+        className="form-input scene-number-input"
+        type="number"
+        value={scene.sceneNumber === undefined ? '' : scene.sceneNumber}
+        readOnly
+      />
+      <input
+        className="form-input"
+        value={scene.name || ''}
+        placeholder="Scene name"
+        readOnly
+      />
+      <button className="icon-btn danger compact" type="button" aria-hidden="true" tabIndex={-1}>
+        <Trash2 size={13} />
+      </button>
+    </div>
+  );
+}
+
+function SortableSceneRow({ scene, roomId, category, onUpdate, onDelete }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: scene.id,
+    data: {
+      type: 'scene',
+      roomId,
+      category,
+      item: scene,
+    },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: transformToString(transform), transition }}
+      className={`scene-row draggable-item ${isDragging ? 'is-dragging' : ''}`}
+    >
+      <DragHandle attributes={attributes} listeners={listeners} label={`Drag scene ${scene.name || scene.sceneNumber || ''}`} />
+      <span className="scene-number-label">#</span>
+      <input
+        className="form-input scene-number-input"
+        type="number"
+        min="1"
+        max="64"
+        value={scene.sceneNumber === undefined ? '' : scene.sceneNumber}
+        onChange={e => onUpdate(roomId, scene.id, 'sceneNumber', e.target.value === '' ? undefined : parseInt(e.target.value, 10))}
+        title="Scene number (1–64)"
+      />
+      <input
+        className="form-input"
+        value={scene.name}
+        onChange={e => onUpdate(roomId, scene.id, 'name', e.target.value)}
+        placeholder="Scene name"
+      />
+      <button
+        className="icon-btn danger compact"
+        type="button"
+        onClick={() => onDelete(roomId, scene.id)}
+        title="Delete scene"
+      >
+        <Trash2 size={13} />
+      </button>
+    </div>
+  );
+}
+
+function FunctionCardPreview({ func, info, isHue }) {
+  return (
+    <div className={`function-card drag-overlay-preview ${isHue ? 'hue-card' : ''}`}>
+      <div className="function-layout">
+        <div className="func-sort">
+          <div className="drag-handle drag-handle-static" aria-hidden="true">
+            <GripVertical size={18} />
+          </div>
+        </div>
+        {isHue ? (
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, paddingLeft: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, background: 'rgba(167, 139, 250, 0.2)', color: '#c4b5fd', padding: '0.15rem 0.4rem', borderRadius: '4px', letterSpacing: '0.05em' }}>HUE</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                Original: <strong>{func.originalHueName || func.name}</strong>
+              </span>
+            </div>
+            <div className="settings-field" style={{ marginBottom: 0 }}>
+              <input className="form-input" style={{ width: 'min(100%, 300px)' }} value={func.name} readOnly />
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="func-left-col">
+              <div className="settings-field">
+                <label className="settings-field-label">Name</label>
+                <input className="form-input" value={func.name} readOnly />
+              </div>
+              <div className="settings-field" style={{ marginTop: '0.6rem' }}>
+                <label className="settings-field-label">Type</label>
+                <div className="type-select">
+                  <div className="type-select-trigger">
+                    <div className="type-select-info">
+                      <span className="type-select-name">{info.label}</span>
+                      <span className="type-select-dpt">{info.dpt}</span>
+                    </div>
+                    <ChevronDown size={14} className="type-select-chevron" />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="func-right-col">
+              <div className="settings-field ga-field">
+                <label className="settings-field-label">Action GA</label>
+                <input className="form-input" value={func.groupAddress || ''} readOnly />
+              </div>
+            </div>
+          </>
+        )}
+        <div className="func-delete">
+          <button className="icon-btn danger compact" type="button" aria-hidden="true" tabIndex={-1}>
+            <Trash2 size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SortableFunctionCard({
+  roomId,
+  func,
+  info,
+  isHue,
+  onUpdate,
+  onTypeChange,
+  onDelete,
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: func.id,
+    data: {
+      type: 'function',
+      roomId,
+      item: func,
+    },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: transformToString(transform), transition }}
+      className={`function-card draggable-item ${isDragging ? 'is-dragging' : ''} ${isHue ? 'hue-card' : ''}`}
+    >
+      <div className="function-layout" style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
+        <div className="func-sort">
+          <DragHandle attributes={attributes} listeners={listeners} label={`Drag function ${func.name || info.label}`} />
+        </div>
+
+        {isHue ? (
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, paddingLeft: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, background: 'rgba(167, 139, 250, 0.2)', color: '#c4b5fd', padding: '0.15rem 0.4rem', borderRadius: '4px', letterSpacing: '0.05em' }}>HUE</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                Original: <strong>{func.originalHueName || func.name}</strong>
+              </span>
+            </div>
+            <div className="settings-field" style={{ marginBottom: 0 }}>
+              <input className="form-input" style={{ width: 'min(100%, 300px)' }} value={func.name}
+                onChange={e => onUpdate(roomId, func.id, 'name', e.target.value)}
+                placeholder="e.g. Living Room Spot" />
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="func-left-col">
+              <div className="settings-field">
+                <label className="settings-field-label">Name</label>
+                <input className="form-input" value={func.name}
+                  onChange={e => onUpdate(roomId, func.id, 'name', e.target.value)}
+                  placeholder="e.g. Lock Door" />
+              </div>
+              <div className="settings-field" style={{ marginTop: '0.6rem' }}>
+                <label className="settings-field-label">Type</label>
+                <TypeSelect value={func.type} onChange={onTypeChange(roomId, func.id, 'type')} />
+              </div>
+            </div>
+
+            <div className="func-right-col">
+              <GAField label="Action GA" tooltipKey="action"
+                value={func.groupAddress}
+                onChange={onTypeChange(roomId, func.id, 'groupAddress')}
+                placeholder="e.g. 1/5/0" />
+
+              {func.type === 'scene' && (
+                <GAField label="Scene Number" tooltipKey="scene"
+                  value={func.sceneNumber}
+                  onChange={onTypeChange(roomId, func.id, 'sceneNumber')}
+                  placeholder="1–64" type="number" min={1} max={64} />
+              )}
+
+              {(func.type === 'switch' || func.type === 'percentage') && (
+                <GAField label="Feedback GA" tooltipKey="feedback"
+                  value={func.statusGroupAddress}
+                  onChange={onTypeChange(roomId, func.id, 'statusGroupAddress')}
+                  placeholder="e.g. 1/5/1" />
+              )}
+
+              {func.type === 'switch' && (
+                <div className="settings-field" style={{ marginTop: '0.6rem' }}>
+                  <label className="settings-field-label" style={{ display: 'block', marginBottom: '0.2rem' }}>Icon</label>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <IconSelect value={func.iconType || 'lightbulb'} onChange={onTypeChange(roomId, func.id, 'iconType')} />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                      <input
+                        type="checkbox"
+                        checked={!!func.invertIcon}
+                        onChange={(e) => onTypeChange(roomId, func.id, 'invertIcon')(e.target.checked)}
+                      />
+                      Invert Icons
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {func.type === 'percentage' && (
+                <GAField label="Moving GA" tooltipKey="moving" optional
+                  value={func.movingGroupAddress}
+                  onChange={onTypeChange(roomId, func.id, 'movingGroupAddress')}
+                  placeholder="e.g. 1/5/2" />
+              )}
+            </div>
+          </>
+        )}
+
+        <div className="func-delete" style={{ display: 'flex', alignItems: 'center', marginLeft: 'auto', alignSelf: 'stretch', paddingLeft: '1rem' }}>
+          <button
+            className="icon-btn danger compact"
+            type="button"
+            onClick={() => onDelete(roomId, func.id)}
+            title="Delete function"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Settings({ config, fetchConfig, addToast, hueStatus, setHueStatus }) {
   const [ip, setIp] = useState(config.knxIp || '');
   const [port, setPort] = useState(config.knxPort || 3671);
@@ -147,6 +436,12 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
   const [hueLampModal, setHueLampModal] = useState({ open: false, roomId: null });
   const [hueLamps, setHueLamps] = useState([]);
   const [hueLampsLoading, setHueLampsLoading] = useState(false);
+  const [activeDrag, setActiveDrag] = useState(null);
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   // Hue wizard handlers
   const handleHueDiscover = async () => {
@@ -289,14 +584,6 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
   };
 
   // --- Room scenes ---
-  const moveItem = (items, fromIndex, toIndex) => {
-    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return items;
-    const nextItems = [...items];
-    const [movedItem] = nextItems.splice(fromIndex, 1);
-    nextItems.splice(toIndex, 0, movedItem);
-    return nextItems;
-  };
-
   const updateRoom = (roomId, patch) => {
     setRooms(prevRooms => prevRooms.map(r => r.id !== roomId ? r : { ...r, ...patch }));
   };
@@ -323,17 +610,17 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
     });
   };
 
-  const moveScene = (roomId, category, sceneId, dir) => {
+  const reorderScenes = (roomId, category, activeId, overId) => {
     setRooms(prevRooms => prevRooms.map(room => {
       if (room.id !== roomId) return room;
 
       const categoryItems = (room.scenes || []).filter(item => (item.category || 'light') === category);
-      const fromIndex = categoryItems.findIndex(item => item.id === sceneId);
-      const toIndex = dir === 'up' ? fromIndex - 1 : fromIndex + 1;
+      const fromIndex = categoryItems.findIndex(item => item.id === activeId);
+      const toIndex = categoryItems.findIndex(item => item.id === overId);
 
-      if (fromIndex < 0 || toIndex < 0 || toIndex >= categoryItems.length) return room;
+      if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return room;
 
-      const reorderedCategoryItems = moveItem(categoryItems, fromIndex, toIndex);
+      const reorderedCategoryItems = arrayMove(categoryItems, fromIndex, toIndex);
       let categoryIndex = 0;
 
       return {
@@ -396,17 +683,17 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
     setRooms(r);
   };
 
-  const moveFunction = (roomId, funcId, dir) => {
+  const reorderFunctions = (roomId, activeId, overId) => {
     setRooms(prevRooms => prevRooms.map(room => {
       if (room.id !== roomId) return room;
-      const fromIndex = room.functions.findIndex(func => func.id === funcId);
-      const toIndex = dir === 'up' ? fromIndex - 1 : fromIndex + 1;
+      const fromIndex = room.functions.findIndex(func => func.id === activeId);
+      const toIndex = room.functions.findIndex(func => func.id === overId);
 
-      if (fromIndex < 0 || toIndex < 0 || toIndex >= room.functions.length) return room;
+      if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return room;
 
       return {
         ...room,
-        functions: moveItem(room.functions, fromIndex, toIndex),
+        functions: arrayMove(room.functions, fromIndex, toIndex),
       };
     }));
   };
@@ -427,7 +714,46 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
     </div>
   );
 
+  const handleDragStart = ({ active }) => {
+    const dragData = active.data.current;
+    if (!dragData) return;
+    setActiveDrag(dragData);
+  };
+
+  const handleDragCancel = () => {
+    setActiveDrag(null);
+  };
+
+  const handleDragEnd = ({ active, over }) => {
+    const activeData = active.data.current;
+    const overData = over?.data.current;
+
+    setActiveDrag(null);
+
+    if (!over || !activeData || !overData || active.id === over.id || activeData.type !== overData.type) {
+      return;
+    }
+
+    if (activeData.type === 'scene') {
+      if (activeData.roomId !== overData.roomId || activeData.category !== overData.category) return;
+      reorderScenes(activeData.roomId, activeData.category, active.id, over.id);
+      return;
+    }
+
+    if (activeData.type === 'function') {
+      if (activeData.roomId !== overData.roomId) return;
+      reorderFunctions(activeData.roomId, active.id, over.id);
+    }
+  };
+
   return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
     <div className="glass-panel" style={{ maxWidth: '900px', margin: '0 auto' }}>
 
       {/* Connection */}
@@ -594,39 +920,7 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
                 {(() => {
                   const lightScenes = (room.scenes || []).filter(s => (s.category || 'light') === 'light');
                   const shadeScenes = (room.scenes || []).filter(s => s.category === 'shade');
-                  
-                  const renderSceneRow = (sc, categoryStr) => (
-                    <div key={sc.id} className="scene-row">
-                      {renderSortControls(
-                        () => moveScene(room.id, categoryStr, sc.id, 'up'),
-                        () => moveScene(room.id, categoryStr, sc.id, 'down'),
-                        (categoryStr === 'light' ? lightScenes : shadeScenes).findIndex(item => item.id === sc.id) > 0,
-                        (categoryStr === 'light' ? lightScenes : shadeScenes).findIndex(item => item.id === sc.id) < (categoryStr === 'light' ? lightScenes : shadeScenes).length - 1,
-                        `Reorder scene ${sc.name || sc.sceneNumber || ''}`
-                      )}
-                      <span className="scene-number-label">#</span>
-                      <input
-                        className="form-input scene-number-input"
-                        type="number"
-                        min="1"
-                        max="64"
-                        value={sc.sceneNumber === undefined ? '' : sc.sceneNumber}
-                        onChange={e => handleUpdateScene(room.id, sc.id, 'sceneNumber', e.target.value === '' ? undefined : parseInt(e.target.value))}
-                        title="Scene number (1–64)"
-                      />
-                      <input
-                        className="form-input"
-                        value={sc.name}
-                        onChange={e => handleUpdateScene(room.id, sc.id, 'name', e.target.value)}
-                        placeholder="Scene name"
-                      />
-                      <button className="icon-btn danger compact"
-                        onClick={() => handleDeleteScene(room.id, sc.id)} title="Delete scene">
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  );
-                  
+
                   return (
                     <>
                       <div style={{ marginBottom: '1.5rem' }}>
@@ -637,9 +931,20 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
                           </button>
                         </div>
                         {lightScenes.length > 0 ? (
-                          <div className="scene-list">
-                            {lightScenes.map((sc) => renderSceneRow(sc, 'light'))}
-                          </div>
+                          <SortableContext items={lightScenes.map(sc => sc.id)} strategy={verticalListSortingStrategy}>
+                            <div className="scene-list">
+                              {lightScenes.map((sc) => (
+                                <SortableSceneRow
+                                  key={sc.id}
+                                  scene={sc}
+                                  roomId={room.id}
+                                  category="light"
+                                  onUpdate={handleUpdateScene}
+                                  onDelete={handleDeleteScene}
+                                />
+                              ))}
+                            </div>
+                          </SortableContext>
                         ) : (
                           <p className="empty-inline-hint">No light scenes configured.</p>
                         )}
@@ -653,9 +958,20 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
                           </button>
                         </div>
                         {shadeScenes.length > 0 ? (
-                          <div className="scene-list">
-                            {shadeScenes.map((sc) => renderSceneRow(sc, 'shade'))}
-                          </div>
+                          <SortableContext items={shadeScenes.map(sc => sc.id)} strategy={verticalListSortingStrategy}>
+                            <div className="scene-list">
+                              {shadeScenes.map((sc) => (
+                                <SortableSceneRow
+                                  key={sc.id}
+                                  scene={sc}
+                                  roomId={room.id}
+                                  category="shade"
+                                  onUpdate={handleUpdateScene}
+                                  onDelete={handleDeleteScene}
+                                />
+                              ))}
+                            </div>
+                          </SortableContext>
                         ) : (
                           <p className="empty-inline-hint">No shade scenes configured.</p>
                         )}
@@ -680,115 +996,24 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
                   Standalone scenes, switches, blinds, and other KNX functions.
                 </p>
 
-                {room.functions.map((func) => {
-                  const info = TYPE_OPTIONS.find(o => o.value === func.type) || TYPE_OPTIONS[0];
-                  const isHue = func.type === 'hue';
-                  return (
-                    <div
-                      key={func.id}
-                      className={`function-card ${isHue ? 'hue-card' : ''}`}
-                    >
-                      <div className="function-layout" style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
-
-                        <div className="func-sort">
-                          {renderSortControls(
-                            () => moveFunction(room.id, func.id, 'up'),
-                            () => moveFunction(room.id, func.id, 'down'),
-                            room.functions.findIndex(item => item.id === func.id) > 0,
-                            room.functions.findIndex(item => item.id === func.id) < room.functions.length - 1,
-                            `Reorder function ${func.name || info.label}`
-                          )}
-                        </div>
-                        
-                        {isHue ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, paddingLeft: '0.5rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
-                              <span style={{ fontSize: '0.7rem', fontWeight: 700, background: 'rgba(167, 139, 250, 0.2)', color: '#c4b5fd', padding: '0.15rem 0.4rem', borderRadius: '4px', letterSpacing: '0.05em' }}>HUE</span>
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                Original: <strong>{func.originalHueName || func.name}</strong>
-                              </span>
-                            </div>
-                            <div className="settings-field" style={{ marginBottom: 0 }}>
-                              <input className="form-input" style={{ width: 'min(100%, 300px)' }} value={func.name}
-                                onChange={e => handleUpdateFunction(room.id, func.id, 'name', e.target.value)}
-                                placeholder="e.g. Living Room Spot" />
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            {/* LEFT: Name + Type for KNX */}
-                            <div className="func-left-col">
-                              <div className="settings-field">
-                                <label className="settings-field-label">Name</label>
-                                <input className="form-input" value={func.name}
-                                  onChange={e => handleUpdateFunction(room.id, func.id, 'name', e.target.value)}
-                                  placeholder="e.g. Lock Door" />
-                              </div>
-                              <div className="settings-field" style={{ marginTop: '0.6rem' }}>
-                                <label className="settings-field-label">Type</label>
-                                <TypeSelect value={func.type} onChange={upd(room.id, func.id, 'type')} />
-                              </div>
-                            </div>
-
-                            {/* RIGHT: KNX Group Addresses */}
-                            <div className="func-right-col">
-                              <GAField label="Action GA" tooltipKey="action"
-                                value={func.groupAddress}
-                                onChange={upd(room.id, func.id, 'groupAddress')}
-                                placeholder="e.g. 1/5/0" />
-
-                              {func.type === 'scene' && (
-                                <GAField label="Scene Number" tooltipKey="scene"
-                                  value={func.sceneNumber}
-                                  onChange={upd(room.id, func.id, 'sceneNumber')}
-                                  placeholder="1–64" type="number" min={1} max={64} />
-                              )}
-
-                              {(func.type === 'switch' || func.type === 'percentage') && (
-                                <GAField label="Feedback GA" tooltipKey="feedback"
-                                  value={func.statusGroupAddress}
-                                  onChange={upd(room.id, func.id, 'statusGroupAddress')}
-                                  placeholder="e.g. 1/5/1" />
-                              )}
-
-                              {func.type === 'switch' && (
-                                <div className="settings-field" style={{ marginTop: '0.6rem' }}>
-                                  <label className="settings-field-label" style={{ display: 'block', marginBottom: '0.2rem' }}>Icon</label>
-                                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                    <IconSelect value={func.iconType || 'lightbulb'} onChange={upd(room.id, func.id, 'iconType')} />
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                      <input 
-                                        type="checkbox" 
-                                        checked={!!func.invertIcon} 
-                                        onChange={(e) => upd(room.id, func.id, 'invertIcon')(e.target.checked)} 
-                                      />
-                                      Invert Icons
-                                    </label>
-                                  </div>
-                                </div>
-                              )}
-
-                              {func.type === 'percentage' && (
-                                <GAField label="Moving GA" tooltipKey="moving" optional
-                                  value={func.movingGroupAddress}
-                                  onChange={upd(room.id, func.id, 'movingGroupAddress')}
-                                  placeholder="e.g. 1/5/2" />
-                              )}
-                            </div>
-                          </>
-                        )}
-
-                        {/* Delete button (for ALL types, including Hue) - vertically centered and pushed to the right */}
-                        <div className="func-delete" style={{ display: 'flex', alignItems: 'center', marginLeft: 'auto', alignSelf: 'stretch', paddingLeft: '1rem' }}>
-                          <button className="icon-btn danger compact"
-                            onClick={() => handleDeleteFunction(room.id, func.id)} title="Delete function">
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                <SortableContext items={room.functions.map(func => func.id)} strategy={verticalListSortingStrategy}>
+                  {room.functions.map((func) => {
+                    const info = TYPE_OPTIONS.find(o => o.value === func.type) || TYPE_OPTIONS[0];
+                    const isHue = func.type === 'hue';
+                    return (
+                      <SortableFunctionCard
+                        key={func.id}
+                        roomId={room.id}
+                        func={func}
+                        info={info}
+                        isHue={isHue}
+                        onUpdate={handleUpdateFunction}
+                        onTypeChange={upd}
+                        onDelete={handleDeleteFunction}
+                      />
+                    );
+                  })}
+                </SortableContext>
 
                 {room.functions.length === 0 && (
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '0.5rem', fontStyle: 'italic' }}>
@@ -865,5 +1090,18 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
       )}
 
     </div>
+    <DragOverlay>
+      {activeDrag?.type === 'scene' && activeDrag.item ? (
+        <SceneRowPreview scene={activeDrag.item} />
+      ) : null}
+      {activeDrag?.type === 'function' && activeDrag.item ? (
+        <FunctionCardPreview
+          func={activeDrag.item}
+          info={TYPE_OPTIONS.find(o => o.value === activeDrag.item.type) || TYPE_OPTIONS[0]}
+          isHue={activeDrag.item.type === 'hue'}
+        />
+      ) : null}
+    </DragOverlay>
+    </DndContext>
   );
 }
