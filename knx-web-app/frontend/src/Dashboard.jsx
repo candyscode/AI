@@ -125,7 +125,7 @@ export default function Dashboard({ config, deviceStates = {}, hueStates = {}, s
 
     let valueToSend = nextState;
     if (type === 'switch') {
-      valueToSend = nextState ? '1' : '0';
+      valueToSend = !!nextState;
     }
 
     // OPTIMISTIC UPDATE FOR KNX
