@@ -132,7 +132,7 @@ app.post('/api/action', (req, res) => {
       knxService.writeGroupValue(groupAddress, value, 'DPT5.001');
     } else {
       // type === 'switch' or other mapped to boolean True/False 1-bit
-      knxService.writeGroupValue(groupAddress, !!value, 'DPT1');
+      knxService.writeGroupValue(groupAddress, (value === true || value === 1 || value === '1'), 'DPT1');
     }
     
     res.json({ success: true, message: `Sent to bus` });
