@@ -883,6 +883,28 @@ body {
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
 }
 
+.hue-modal-search {
+  position: relative;
+  margin-bottom: 1rem;
+}
+
+.hue-modal-search-icon {
+  position: absolute;
+  left: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.hue-modal-search-input {
+  padding-left: 2.6rem;
+}
+
+.hue-modal-empty {
+  padding: 0.75rem 0;
+}
+
 /* ── Hue Lamp List ─────────────────────────── */
 .hue-lamp-list {
   display: flex;

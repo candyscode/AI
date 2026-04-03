@@ -12,7 +12,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { updateConfig, discoverHueBridge, pairHueBridge, unpairHueBridge, getHueLights } from './configApi';
 import {
   Plus, Trash2, Save, ChevronDown, HelpCircle, Sparkles,
-  Lightbulb, Lock, GripVertical
+  Lightbulb, Lock, GripVertical, Search
 } from 'lucide-react';
 
 const ICON_OPTIONS = [
@@ -430,6 +430,7 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
   const [hueLampModal, setHueLampModal] = useState({ open: false, roomId: null });
   const [hueLamps, setHueLamps] = useState([]);
   const [hueLampsLoading, setHueLampsLoading] = useState(false);
+  const [hueLampSearch, setHueLampSearch] = useState('');
 
   // DnD sensors — touch + pointer + keyboard
   const sensors = useSensors(
@@ -480,6 +481,7 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
   };
 
   const openHueLampModal = async (roomId) => {
+    setHueLampSearch('');
     setHueLampModal({ open: true, roomId }); setHueLampsLoading(true);
     try {
       const res = await getHueLights();
@@ -494,7 +496,7 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
     const updated = rooms.map(r => r.id !== roomId ? r : {
       ...r, functions: [...r.functions, { id: Date.now().toString(), name: lamp.name, originalHueName: lamp.name, type: 'hue', hueLightId: lamp.id, iconType: 'lightbulb' }]
     });
-    setRooms(updated); setHueLampModal({ open: false, roomId: null }); addToast(`Added "${lamp.name}"`, 'success');
+    setRooms(updated); setHueLampSearch(''); setHueLampModal({ open: false, roomId: null }); addToast(`Added "${lamp.name}"`, 'success');
   };
 
   // Room handlers
@@ -606,6 +608,9 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
   };
 
   const roomIds = rooms.map(r => r.id);
+  const filteredHueLamps = hueLamps.filter(lamp =>
+    lamp.name.toLowerCase().includes(hueLampSearch.trim().toLowerCase())
+  );
 
   return (
     <div className="glass-panel settings-panel">
@@ -743,16 +748,28 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
 
       {/* Hue Lamp Selection Modal */}
       {hueLampModal.open && createPortal(
-        <div className="modal-overlay" onClick={() => setHueLampModal({ open: false, roomId: null })}>
+        <div className="modal-overlay" onClick={() => { setHueLampSearch(''); setHueLampModal({ open: false, roomId: null }); }}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <h3 style={{ margin: '0 0 1rem 0' }}>Select Hue Lamp</h3>
+            <div className="hue-modal-search">
+              <Search size={16} className="hue-modal-search-icon" />
+              <input
+                className="form-input hue-modal-search-input"
+                type="text"
+                placeholder="Search Hue lamps"
+                value={hueLampSearch}
+                onChange={e => setHueLampSearch(e.target.value)}
+              />
+            </div>
             {hueLampsLoading ? (
               <p style={{ color: 'var(--text-secondary)' }}>Loading lamps…</p>
             ) : hueLamps.length === 0 ? (
               <p style={{ color: 'var(--text-secondary)' }}>No Hue lights found.</p>
+            ) : filteredHueLamps.length === 0 ? (
+              <p className="hue-modal-empty" style={{ color: 'var(--text-secondary)' }}>No matching Hue lights found.</p>
             ) : (
               <div className="hue-lamp-list">
-                {hueLamps.map(lamp => (
+                {filteredHueLamps.map(lamp => (
                   <button key={lamp.id} className="hue-lamp-item" onClick={() => selectHueLamp(lamp)}>
                     <Lightbulb size={18} style={{ color: lamp.on ? 'var(--success-color)' : 'var(--text-secondary)', flexShrink: 0 }} fill={lamp.on ? 'currentColor' : 'none'} />
                     <div style={{ flex: 1, textAlign: 'left' }}>
@@ -768,7 +785,7 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
             )}
             <div style={{ textAlign: 'right', marginTop: '1rem' }}>
               <button className="btn-primary" style={{ background: 'rgba(255,255,255,0.08)', fontSize: '0.85rem', padding: '0.4rem 1rem' }}
-                onClick={() => setHueLampModal({ open: false, roomId: null })}>
+                onClick={() => { setHueLampSearch(''); setHueLampModal({ open: false, roomId: null }); }}>
                 Cancel
               </button>
             </div>
