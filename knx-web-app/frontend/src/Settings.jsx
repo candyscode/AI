@@ -185,8 +185,7 @@ function SortableSceneRow({ sc, roomId, handleUpdateScene, handleDeleteScene, hu
             <span className="hue-off-label">This scene will turn off the hue room.</span>
           ) : (
             <button
-              className="btn-secondary-sm btn-purple-sm"
-              style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem' }}
+              className="btn-secondary-sm btn-purple-sm scene-hue-link-btn"
               onClick={() => openHueSceneModal(roomId, sc.id)}
               title="Link a Hue scene"
             >
@@ -366,8 +365,7 @@ function SortableRoomCard({
               </div>
             ) : (
               <button
-                className="btn-secondary-sm btn-purple-sm"
-                style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
+                className="btn-secondary-sm btn-purple-sm scene-hue-link-btn"
                 onClick={() => openHueRoomModal(room.id)}
               >
                 <Lightbulb size={12} /> Link Hue Room
