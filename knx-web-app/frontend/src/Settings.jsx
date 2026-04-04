@@ -167,34 +167,34 @@ function SortableSceneRow({ sc, roomId, handleUpdateScene, handleDeleteScene, hu
             placeholder="1–64"
           />
         </div>
-        {/* Hue scene link — only for light scenes when bridge is paired */}
-        {hueStatus && hueStatus.paired && isLight && (
-          <div className="scene-field scene-field--hue">
-            {sc.hueSceneId ? (
-              <div className="hue-linked-badge" title={`Linked: ${sc.hueSceneId}`}>
-                <Lightbulb size={12} />
-                <span className="hue-linked-label">{sc.hueSceneName || sc.hueSceneId}</span>
-                <button
-                  className="hue-unlink-btn"
-                  title="Unlink Hue scene"
-                  onClick={() => handleUpdateScene(roomId, sc.id, '_unlinkHue', true)}
-                >×</button>
-              </div>
-            ) : isHueOffScene ? (
-              <span className="hue-off-label">{sceneName || 'Off'}</span>
-            ) : (
-              <button
-                className="btn-secondary-sm btn-purple-sm"
-                style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem' }}
-                onClick={() => openHueSceneModal(roomId, sc.id)}
-                title="Link a Hue scene"
-              >
-                <Lightbulb size={11} /> Link Hue
-              </button>
-            )}
-          </div>
-        )}
       </div>
+      {/* Hue scene link — only for light scenes when bridge is paired */}
+      {hueStatus && hueStatus.paired && isLight ? (
+        <div className="scene-field scene-field--hue">
+          {sc.hueSceneId ? (
+            <div className="hue-linked-badge" title={`Linked: ${sc.hueSceneId}`}>
+              <Lightbulb size={12} />
+              <span className="hue-linked-label">{sc.hueSceneName || sc.hueSceneId}</span>
+              <button
+                className="hue-unlink-btn"
+                title="Unlink Hue scene"
+                onClick={() => handleUpdateScene(roomId, sc.id, '_unlinkHue', true)}
+              >×</button>
+            </div>
+          ) : isHueOffScene ? (
+            <span className="hue-off-label">This scene will turn off the hue room.</span>
+          ) : (
+            <button
+              className="btn-secondary-sm btn-purple-sm"
+              style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem' }}
+              onClick={() => openHueSceneModal(roomId, sc.id)}
+              title="Link a Hue scene"
+            >
+              <Lightbulb size={11} /> Link Hue
+            </button>
+          )}
+        </div>
+      ) : null}
       <button className="btn-danger icon-btn scene-delete-btn" onClick={() => handleDeleteScene(roomId, sc.id)} title="Delete scene">
         <Trash2 size={14} />
       </button>
