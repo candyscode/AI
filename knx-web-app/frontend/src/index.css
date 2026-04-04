@@ -1235,6 +1235,13 @@ body {
   text-align: right;
 }
 
+.scene-field--hue .btn-secondary-sm,
+.scene-hue-link-btn {
+  height: 28px;
+  padding: 0 0.6rem;
+  font-size: 0.72rem;
+}
+
 .scene-field-label {
   font-size: 0.68rem;
   font-weight: 600;
