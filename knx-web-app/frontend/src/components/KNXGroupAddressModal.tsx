@@ -36,12 +36,16 @@ export function KNXGroupAddressModal({
   const [uploadedData, setUploadedData] = useState<GroupAddress[]>(initialXmlData);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   const handleClearUpload = () => {
     setUploadedData([]);
     setUploadSuccess(null);
     setUploadError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
     }
   };
   
