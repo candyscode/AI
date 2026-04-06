@@ -7,7 +7,7 @@
 
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { Search, X, Upload, FileText, Trash2 } from 'lucide-react';
-import { parseKNXGroupAddressXML, convertToInternalFormat, GroupAddress as ParsedGroupAddress } from './knx-xml-parser';
+import { parseKNXGroupAddressXML, convertToInternalFormat, GroupAddress as ParsedGroupAddress } from '../knx-xml-parser';
 
 interface GroupAddress {
   address: string;
