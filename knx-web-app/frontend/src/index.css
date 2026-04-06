@@ -761,8 +761,10 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-  z-index: 100;
+  z-index: 1000; /* Fix: Increased z-index to prevent clipping */
   overflow: hidden;
+  max-height: 300px; /* Fix: Add max-height for long lists */
+  overflow-y: auto; /* Fix: Enable scrolling for long lists */
 }
 
 .type-select-option {
@@ -1051,7 +1053,7 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 10px;
   margin-bottom: 0.6rem;
-  overflow: hidden;
+  overflow: visible; /* Fix: Allow dropdowns to overflow */
   transition: border-color 0.2s;
 }
 .function-card:hover { border-color: rgba(59, 130, 246, 0.2); }
