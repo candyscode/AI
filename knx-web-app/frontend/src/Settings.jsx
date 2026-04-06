@@ -12,7 +12,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { updateConfig, discoverHueBridge, pairHueBridge, unpairHueBridge, getHueLights, getHueRooms, getHueScenes, linkHueRoom, unlinkHueRoom, linkHueScene, unlinkHueScene } from './configApi';
 import {
   Plus, Trash2, Save, ChevronDown, HelpCircle, Sparkles,
-  Lightbulb, Lock, GripVertical, Search
+  Lightbulb, Lock, GripVertical, Search, ChevronRight, Building2
 } from 'lucide-react';
 
 const ICON_OPTIONS = [
@@ -23,6 +23,12 @@ const TYPE_OPTIONS = [
   { value: 'scene',      label: 'Scene',  dpt: 'DPT 17.001' },
   { value: 'switch',     label: 'Switch', dpt: 'DPT 1.001'  },
   { value: 'percentage', label: 'Blind',  dpt: 'DPT 5.001'  },
+];
+const FLOOR_OPTIONS = [
+  { value: 'KG', label: 'KG', fullLabel: 'Keller' },
+  { value: 'UG', label: 'UG', fullLabel: 'Untergeschoss' },
+  { value: 'EG', label: 'EG', fullLabel: 'Erdgeschoss' },
+  { value: 'OG', label: 'OG', fullLabel: 'Obergeschoss' },
 ];
 
 const GA_TOOLTIPS = {
@@ -60,6 +66,39 @@ function TypeSelect({ value, onChange }) {
               onClick={() => { onChange(opt.value); setOpen(false); }}>
               <span className="type-select-name">{opt.label}</span>
               <span className="type-select-dpt">{opt.dpt}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FloorSelect({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const current = FLOOR_OPTIONS.find(o => o.value === value) || FLOOR_OPTIONS[2]; // Default to EG
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  return (
+    <div className="floor-select" ref={ref}>
+      <div className="floor-select-trigger" onClick={() => setOpen(o => !o)}>
+        <div className="floor-select-info">
+          <span className="floor-select-label">{current.label}</span>
+          <span className="floor-select-full">{current.fullLabel}</span>
+        </div>
+        <ChevronDown size={14} className={`floor-select-chevron ${open ? 'open' : ''}`} />
+      </div>
+      {open && (
+        <div className="floor-select-dropdown">
+          {FLOOR_OPTIONS.map(opt => (
+            <div key={opt.value} className={`floor-select-option ${opt.value === value ? 'active' : ''}`}
+              onClick={() => { onChange(opt.value); setOpen(false); }}>
+              <span className="floor-select-label">{opt.label}</span>
+              <span className="floor-select-full">{opt.fullLabel}</span>
             </div>
           ))}
         </div>
@@ -300,7 +339,7 @@ function SortableFunctionCard({ func, room, handleUpdateFunction, handleDeleteFu
   );
 }
 
-// ── Sortable Room Card ────────────────────────────────────────────────────────
+// ── Sortable Room Card (Collapsible) ─────────────────────────────────────────
 
 function SortableRoomCard({
   room, rooms,
@@ -312,6 +351,7 @@ function SortableRoomCard({
   openHueLampModal, hueStatus,
   onFuncDragEnd, onSceneDragEnd,
   sensors,
+  isExpanded, onToggleExpand,
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: room.id });
@@ -323,158 +363,242 @@ function SortableRoomCard({
   const funcIds = room.functions.map(f => f.id);
 
   return (
-    <div ref={setNodeRef} style={style} className="room-settings-card">
-      {/* Room header */}
-      <div className="room-settings-header">
-        <span className="drag-handle room-drag-handle" {...attributes} {...listeners} title="Drag to reorder">
+    <div ref={setNodeRef} style={style} className={`room-settings-card ${isExpanded ? 'expanded' : 'collapsed'}`}>
+      {/* Room header - clickable to expand/collapse */}
+      <div className="room-settings-header" onClick={onToggleExpand}>
+        <span className="drag-handle room-drag-handle" {...attributes} {...listeners} title="Drag to reorder"
+          onClick={(e) => e.stopPropagation()}>
           <GripVertical size={20} />
         </span>
-        <h3 style={{ margin: 0, flex: 1 }}>{room.name}</h3>
-        <button className="btn-danger icon-btn" onClick={() => handleDeleteRoom(room.id)} title="Delete Room">
-          <Trash2 size={15} />
-        </button>
+        <div className="room-settings-header-content">
+          <h3>{room.name}</h3>
+          <span className="room-floor-badge">{room.floor || 'EG'}</span>
+        </div>
+        <div className="room-settings-header-actions">
+          <button 
+            className={`room-expand-btn ${isExpanded ? 'expanded' : ''}`}
+            title={isExpanded ? 'Collapse' : 'Expand'}
+          >
+            <ChevronRight size={20} />
+          </button>
+          <button 
+            className="btn-danger icon-btn" 
+            onClick={(e) => { e.stopPropagation(); handleDeleteRoom(room.id); }} 
+            title="Delete Room"
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
       </div>
 
-      {/* ═══ ROOM SCENES ═══ */}
-      <div className="room-section">
-        <h4 className="section-label">Room Scenes</h4>
-        <p className="section-subtitle">
-          All scenes in this room share a single group address.
-        </p>
-
-        <div style={{ marginBottom: '1rem' }}>
-          <GAField label="Scene GA" tooltipKey="sceneGA"
-            value={room.sceneGroupAddress}
-            onChange={(val) => updateRoom(room.id, { sceneGroupAddress: val })}
-            placeholder="e.g. 2/5/0" />
+      {/* Collapsible content */}
+      <div className={`room-settings-content ${isExpanded ? 'expanded' : 'collapsed'}`}>
+        {/* Floor selector */}
+        <div className="room-floor-section">
+          <label className="settings-field-label">Floor / Etage</label>
+          <FloorSelect 
+            value={room.floor || 'EG'} 
+            onChange={(floor) => updateRoom(room.id, { floor })} 
+          />
         </div>
 
-        {/* Hue room link */}
-        {hueStatus && hueStatus.paired && (
-          <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', minWidth: '90px' }}>Hue Room:</span>
-            {room.hueRoomId ? (
-              <div className="hue-linked-badge">
-                <Lightbulb size={12} />
-                <span className="hue-linked-label">{room.hueRoomName || room.hueRoomId}</span>
+        {/* ═══ ROOM SCENES ═══ */}
+        <div className="room-section">
+          <h4 className="section-label">Room Scenes</h4>
+          <p className="section-subtitle">
+            All scenes in this room share a single group address.
+          </p>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <GAField label="Scene GA" tooltipKey="sceneGA"
+              value={room.sceneGroupAddress}
+              onChange={(val) => updateRoom(room.id, { sceneGroupAddress: val })}
+              placeholder="e.g. 2/5/0" />
+          </div>
+
+          {/* Hue room link */}
+          {hueStatus && hueStatus.paired && (
+            <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', minWidth: '90px' }}>Hue Room:</span>
+              {room.hueRoomId ? (
+                <div className="hue-linked-badge">
+                  <Lightbulb size={12} />
+                  <span className="hue-linked-label">{room.hueRoomName || room.hueRoomId}</span>
+                  <button
+                    className="hue-unlink-btn"
+                    title="Unlink Hue room"
+                    onClick={() => updateRoom(room.id, { hueRoomId: null, hueRoomName: null })}
+                  >×</button>
+                </div>
+              ) : (
                 <button
-                  className="hue-unlink-btn"
-                  title="Unlink Hue room"
-                  onClick={() => updateRoom(room.id, { hueRoomId: null, hueRoomName: null })}
-                >×</button>
+                  className="btn-secondary-sm btn-purple-sm scene-hue-link-btn"
+                  onClick={() => openHueRoomModal(room.id)}
+                >
+                  <Lightbulb size={12} /> Link Hue Room
+                </button>
+              )}
+            </div>
+          )}
+
+          <DndContext sensors={sensors} collisionDetection={closestCenter}
+            onDragEnd={(e) => onSceneDragEnd(e, room.id)}>
+            <SortableContext items={allSceneIds} strategy={verticalListSortingStrategy}>
+
+              {/* ── Light Scenes ── */}
+              <div className="scene-category-block scene-category-block--light">
+                <div className="scene-category-header">
+                  <h5 className="scene-category-title">Light Scenes</h5>
+                </div>
+                <div className="scene-list">
+                  {lightScenes.map(sc => (
+                    <SortableSceneRow key={sc.id} sc={sc} roomId={room.id}
+                      handleUpdateScene={handleUpdateScene}
+                      handleDeleteScene={handleDeleteScene}
+                      hueStatus={hueStatus}
+                      openHueSceneModal={openHueSceneModal} />
+                  ))}
+                </div>
+                <div className="scene-actions-row">
+                  <button
+                    className="btn-secondary-sm scene-add-btn scene-actions-row__add"
+                    onClick={() => handleAddScene(room.id, 'light')}
+                  >
+                    <Plus size={13} /> Add Light Scene
+                  </button>
+                  <button
+                    className="btn-secondary-sm btn-purple-sm scene-actions-row__generate"
+                    onClick={() => handleGenerateBaseScenes(room.id)}
+                  >
+                    <Sparkles size={13} /> Generate Base Scenes
+                  </button>
+                </div>
               </div>
-            ) : (
-              <button
-                className="btn-secondary-sm btn-purple-sm scene-hue-link-btn"
-                onClick={() => openHueRoomModal(room.id)}
-              >
-                <Lightbulb size={12} /> Link Hue Room
+
+              {/* ── Shade Scenes ── */}
+              <div className="scene-category-block scene-category-block--shade">
+                <div className="scene-category-header">
+                  <h5 className="scene-category-title">Shade Scenes</h5>
+                </div>
+                <div className="scene-list">
+                  {shadeScenes.map(sc => (
+                    <SortableSceneRow key={sc.id} sc={sc} roomId={room.id}
+                      handleUpdateScene={handleUpdateScene}
+                      handleDeleteScene={handleDeleteScene}
+                      hueStatus={hueStatus}
+                      openHueSceneModal={openHueSceneModal} />
+                  ))}
+                </div>
+                <button className="btn-secondary-sm scene-add-btn" onClick={() => handleAddScene(room.id, 'shade')}>
+                  <Plus size={13} /> Add Shade Scene
+                </button>
+              </div>
+
+            </SortableContext>
+          </DndContext>
+        </div>
+
+        {/* ═══ ADDITIONAL FUNCTIONS ═══ */}
+        <div className="room-section">
+          <h4 className="section-label">Additional Functions</h4>
+          <p className="section-subtitle">Switches, blinds, scenes and Hue lamps.</p>
+
+          <DndContext sensors={sensors} collisionDetection={closestCenter}
+            onDragEnd={(e) => onFuncDragEnd(e, room.id)}>
+            <SortableContext items={funcIds} strategy={verticalListSortingStrategy}>
+              {room.functions.map(func => (
+                <SortableFunctionCard
+                  key={func.id}
+                  func={func}
+                  room={room}
+                  handleUpdateFunction={handleUpdateFunction}
+                  handleDeleteFunction={handleDeleteFunction}
+                  hueStatus={hueStatus}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+
+          {room.functions.length === 0 && (
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontStyle: 'italic', marginBottom: '0.5rem' }}>
+              No additional functions configured.
+            </p>
+          )}
+
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+            <button className="btn-secondary-sm" onClick={() => handleAddFunction(room.id)}>
+              <Plus size={13} /> Add Function
+            </button>
+            {hueStatus.paired && (
+              <button className="btn-secondary-sm btn-purple-sm" onClick={() => openHueLampModal(room.id)}>
+                <Lightbulb size={13} /> Add Hue Lamp
               </button>
             )}
           </div>
-        )}
+        </div>
 
-        <DndContext sensors={sensors} collisionDetection={closestCenter}
-          onDragEnd={(e) => onSceneDragEnd(e, room.id)}>
-          <SortableContext items={allSceneIds} strategy={verticalListSortingStrategy}>
-
-            {/* ── Light Scenes ── */}
-            <div className="scene-category-block scene-category-block--light">
-              <div className="scene-category-header">
-                <h5 className="scene-category-title">Light Scenes</h5>
-              </div>
-              <div className="scene-list">
-                {lightScenes.map(sc => (
-                  <SortableSceneRow key={sc.id} sc={sc} roomId={room.id}
-                    handleUpdateScene={handleUpdateScene}
-                    handleDeleteScene={handleDeleteScene}
-                    hueStatus={hueStatus}
-                    openHueSceneModal={openHueSceneModal} />
-                ))}
-              </div>
-              <div className="scene-actions-row">
-                <button
-                  className="btn-secondary-sm scene-add-btn scene-actions-row__add"
-                  onClick={() => handleAddScene(room.id, 'light')}
-                >
-                  <Plus size={13} /> Add Light Scene
-                </button>
-                <button
-                  className="btn-secondary-sm btn-purple-sm scene-actions-row__generate"
-                  onClick={() => handleGenerateBaseScenes(room.id)}
-                >
-                  <Sparkles size={13} /> Generate Base Scenes
-                </button>
-              </div>
-            </div>
-
-            {/* ── Shade Scenes ── */}
-            <div className="scene-category-block scene-category-block--shade">
-              <div className="scene-category-header">
-                <h5 className="scene-category-title">Shade Scenes</h5>
-              </div>
-              <div className="scene-list">
-                {shadeScenes.map(sc => (
-                  <SortableSceneRow key={sc.id} sc={sc} roomId={room.id}
-                    handleUpdateScene={handleUpdateScene}
-                    handleDeleteScene={handleDeleteScene}
-                    hueStatus={hueStatus}
-                    openHueSceneModal={openHueSceneModal} />
-                ))}
-              </div>
-              <button className="btn-secondary-sm scene-add-btn" onClick={() => handleAddScene(room.id, 'shade')}>
-                <Plus size={13} /> Add Shade Scene
-              </button>
-            </div>
-
-          </SortableContext>
-        </DndContext>
-      </div>
-
-      {/* ═══ ADDITIONAL FUNCTIONS ═══ */}
-      <div className="room-section">
-        <h4 className="section-label">Additional Functions</h4>
-        <p className="section-subtitle">Switches, blinds, scenes and Hue lamps.</p>
-
-        <DndContext sensors={sensors} collisionDetection={closestCenter}
-          onDragEnd={(e) => onFuncDragEnd(e, room.id)}>
-          <SortableContext items={funcIds} strategy={verticalListSortingStrategy}>
-            {room.functions.map(func => (
-              <SortableFunctionCard
-                key={func.id}
-                func={func}
-                room={room}
-                handleUpdateFunction={handleUpdateFunction}
-                handleDeleteFunction={handleDeleteFunction}
-                hueStatus={hueStatus}
-              />
-            ))}
-          </SortableContext>
-        </DndContext>
-
-        {room.functions.length === 0 && (
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontStyle: 'italic', marginBottom: '0.5rem' }}>
-            No additional functions configured.
-          </p>
-        )}
-
-        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
-          <button className="btn-secondary-sm" onClick={() => handleAddFunction(room.id)}>
-            <Plus size={13} /> Add Function
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+          <button className="btn-primary" style={{ fontSize: '0.85rem', padding: '0.5rem 1.25rem', background: 'var(--success-color)' }}
+            onClick={handleSaveRooms}>
+            <Save size={14} /> Save All Changes
           </button>
-          {hueStatus.paired && (
-            <button className="btn-secondary-sm btn-purple-sm" onClick={() => openHueLampModal(room.id)}>
-              <Lightbulb size={13} /> Add Hue Lamp
-            </button>
-          )}
         </div>
       </div>
+    </div>
+  );
+}
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-        <button className="btn-primary" style={{ fontSize: '0.85rem', padding: '0.5rem 1.25rem', background: 'var(--success-color)' }}
-          onClick={handleSaveRooms}>
-          <Save size={14} /> Save All Changes
-        </button>
+// ── Floor Section Component ───────────────────────────────────────────────────
+
+function FloorSection({ 
+  floor, 
+  floorRooms, 
+  allRooms,
+  isExpanded, 
+  onToggleExpand,
+  ...roomCardProps 
+}) {
+  const floorConfig = FLOOR_OPTIONS.find(f => f.value === floor) || { label: floor, fullLabel: floor };
+  const roomIds = floorRooms.map(r => r.id);
+
+  return (
+    <div className={`floor-section ${isExpanded ? 'expanded' : 'collapsed'}`}>
+      <div className="floor-section-header" onClick={onToggleExpand}>
+        <div className="floor-section-info">
+          <Building2 size={20} className="floor-icon" />
+          <div className="floor-section-title">
+            <span className="floor-label">{floorConfig.label}</span>
+            <span className="floor-full">{floorConfig.fullLabel}</span>
+          </div>
+          <span className="floor-room-count">{floorRooms.length} {floorRooms.length === 1 ? 'room' : 'rooms'}</span>
+        </div>
+        <div className="floor-section-actions">
+          <button 
+            className={`floor-expand-btn ${isExpanded ? 'expanded' : ''}`}
+            title={isExpanded ? 'Collapse' : 'Expand'}
+          >
+            <ChevronRight size={22} />
+          </button>
+        </div>
+      </div>
+      
+      <div className={`floor-section-content ${isExpanded ? 'expanded' : 'collapsed'}`}>
+        <SortableContext items={roomIds} strategy={verticalListSortingStrategy}>
+          {floorRooms.map(room => (
+            <SortableRoomCard
+              key={room.id}
+              room={room}
+              rooms={allRooms}
+              isExpanded={roomCardProps.expandedRooms.has(room.id)}
+              onToggleExpand={() => roomCardProps.onToggleRoomExpand(room.id)}
+              {...roomCardProps}
+            />
+          ))}
+        </SortableContext>
+        
+        {floorRooms.length === 0 && (
+          <p className="floor-empty-state">No rooms on this floor yet.</p>
+        )}
       </div>
     </div>
   );
@@ -487,6 +611,18 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
   const [port, setPort] = useState(config.knxPort || 3671);
   const [rooms, setRooms] = useState(() => migrateRooms(config.rooms || []));
   const [newRoomName, setNewRoomName] = useState('');
+  
+  // Floor expansion state (persisted)
+  const [expandedFloors, setExpandedFloors] = useState(() => {
+    const saved = localStorage.getItem('knx_expanded_floors');
+    return saved ? new Set(JSON.parse(saved)) : new Set(config.ui?.expandedFloors || ['EG']);
+  });
+  
+  // Individual room expansion state (persisted)
+  const [expandedRooms, setExpandedRooms] = useState(() => {
+    const saved = localStorage.getItem('knx_expanded_rooms');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
 
   const [hueStep, setHueStep] = useState('idle');
   const [hueBridgeIp, setHueBridgeIp] = useState(config.hue?.bridgeIp || '');
@@ -516,9 +652,36 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  // Persist expanded floors to localStorage
+  useEffect(() => {
+    localStorage.setItem('knx_expanded_floors', JSON.stringify([...expandedFloors]));
+  }, [expandedFloors]);
+
+  // Persist expanded rooms to localStorage
+  useEffect(() => {
+    localStorage.setItem('knx_expanded_rooms', JSON.stringify([...expandedRooms]));
+  }, [expandedRooms]);
+
+  // Sync expanded floors with config
+  useEffect(() => {
+    const updateUiConfig = async () => {
+      try {
+        await updateConfig({ ui: { expandedFloors: [...expandedFloors] } });
+      } catch (e) {
+        // Silent fail - localStorage is our primary persistence
+      }
+    };
+    updateUiConfig();
+  }, [expandedFloors]);
+
   // One-time migration
   function migrateRooms(inputRooms) {
     return inputRooms.map(room => {
+      // Migrate floor field
+      if (!room.floor) {
+        room = { ...room, floor: 'EG' };
+      }
+      // Existing scene migration
       if (room.scenes !== undefined) return room;
       const sceneFuncs = (room.functions || []).filter(f => f.type === 'scene');
       const otherFuncs = (room.functions || []).filter(f => f.type !== 'scene');
@@ -532,6 +695,44 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
       return { ...room, sceneGroupAddress: primaryGA, scenes: roomScenes, functions: [...standaloneFuncs, ...otherFuncs] };
     });
   }
+
+  // Group rooms by floor
+  const roomsByFloor = React.useMemo(() => {
+    const grouped = {};
+    FLOOR_OPTIONS.forEach(f => grouped[f.value] = []);
+    rooms.forEach(room => {
+      const floor = room.floor || 'EG';
+      if (!grouped[floor]) grouped[floor] = [];
+      grouped[floor].push(room);
+    });
+    return grouped;
+  }, [rooms]);
+
+  // Floor expansion handlers
+  const toggleFloorExpand = (floor) => {
+    setExpandedFloors(prev => {
+      const next = new Set(prev);
+      if (next.has(floor)) {
+        next.delete(floor);
+      } else {
+        next.add(floor);
+      }
+      return next;
+    });
+  };
+
+  // Room expansion handlers
+  const toggleRoomExpand = (roomId) => {
+    setExpandedRooms(prev => {
+      const next = new Set(prev);
+      if (next.has(roomId)) {
+        next.delete(roomId);
+      } else {
+        next.add(roomId);
+      }
+      return next;
+    });
+  };
 
   // Hue handlers
   const handleHueDiscover = async () => {
@@ -662,7 +863,7 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
 
   const handleCreateRoom = async () => {
     if (!newRoomName.trim()) return;
-    const newRoom = { id: Date.now().toString(), name: newRoomName, sceneGroupAddress: '', scenes: [], functions: [] };
+    const newRoom = { id: Date.now().toString(), name: newRoomName, floor: 'EG', sceneGroupAddress: '', scenes: [], functions: [] };
     const updated = [...rooms, newRoom];
     try { await updateConfig({ rooms: updated }); setRooms(updated); setNewRoomName(''); addToast('Room added', 'success'); fetchConfig(); }
     catch { addToast('Failed to add room', 'error'); }
@@ -670,6 +871,12 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
 
   const handleDeleteRoom = async (id) => {
     const updated = rooms.filter(r => r.id !== id);
+    // Also remove from expanded rooms
+    setExpandedRooms(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     try { await updateConfig({ rooms: updated }); setRooms(updated); addToast('Room deleted', 'success'); fetchConfig(); }
     catch { addToast('Failed to delete room', 'error'); }
   };
@@ -764,10 +971,12 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
     }));
   };
 
-  const roomIds = rooms.map(r => r.id);
   const filteredHueLamps = hueLamps.filter(lamp => lamp.name.toLowerCase().includes(hueLampSearch.trim().toLowerCase()));
   const filteredHueRooms = hueRooms.filter(room => room.name.toLowerCase().includes(hueRoomSearch.trim().toLowerCase()));
   const filteredHueScenes = hueScenes.filter(scene => scene.name.toLowerCase().includes(hueSceneSearch.trim().toLowerCase()));
+
+  // Prepare all room IDs for cross-floor drag and drop
+  const allRoomIds = rooms.map(r => r.id);
 
   return (
     <div className="glass-panel settings-panel">
@@ -852,11 +1061,11 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
         )}
       </div>
 
-      {/* Rooms */}
+      {/* Rooms by Floor */}
       <div className="settings-section">
         <h2>Rooms &amp; Functions</h2>
         <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-          Group your KNX devices into rooms and configure their functions.
+          Group your KNX devices into rooms and configure their functions. Rooms are organized by floor.
         </p>
 
         <div className="knx-ip-row" style={{ marginBottom: '2rem' }}>
@@ -872,12 +1081,15 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
         </div>
 
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onRoomDragEnd}>
-          <SortableContext items={roomIds} strategy={verticalListSortingStrategy}>
-            {rooms.map(room => (
-              <SortableRoomCard
-                key={room.id}
-                room={room}
-                rooms={rooms}
+          <SortableContext items={allRoomIds} strategy={verticalListSortingStrategy}>
+            {FLOOR_OPTIONS.map(floor => (
+              <FloorSection
+                key={floor.value}
+                floor={floor.value}
+                floorRooms={roomsByFloor[floor.value] || []}
+                allRooms={rooms}
+                isExpanded={expandedFloors.has(floor.value)}
+                onToggleExpand={() => toggleFloorExpand(floor.value)}
                 handleDeleteRoom={handleDeleteRoom}
                 updateRoom={updateRoom}
                 handleAddScene={handleAddScene}
@@ -895,6 +1107,8 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
                 onFuncDragEnd={onFuncDragEnd}
                 onSceneDragEnd={onSceneDragEnd}
                 sensors={sensors}
+                expandedRooms={expandedRooms}
+                onToggleRoomExpand={toggleRoomExpand}
               />
             ))}
           </SortableContext>
