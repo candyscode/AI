@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useEffectEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor,
@@ -10,9 +10,10 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { updateConfig, discoverHueBridge, pairHueBridge, unpairHueBridge, getHueLights, getHueRooms, getHueScenes, linkHueRoom, unlinkHueRoom, linkHueScene, unlinkHueScene } from './configApi';
+import { getDropdownPosition, getSelectOption } from './iconSelectUtils';
 import {
   Plus, Trash2, Save, ChevronDown, HelpCircle, Sparkles,
-  Lightbulb, Lock, GripVertical, Search, ChevronRight, Building2
+  Lightbulb, Lock, GripVertical, Search, ChevronRight, Building2, MoreHorizontal
 } from 'lucide-react';
 
 const ICON_OPTIONS = [
@@ -107,38 +108,152 @@ function FloorSelect({ value, onChange }) {
   );
 }
 
-function IconSelect({ value, onChange }) {
+function RoomActionMenu({ room, onMoveRoom, onDeleteRoom }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-  const current = ICON_OPTIONS.find(o => o.value === value) || ICON_OPTIONS[0];
-  const CurrentIcon = current.Icon;
+
   useEffect(() => {
     const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
+
   return (
-    <div className="type-select" ref={ref} style={{ flex: 1, minWidth: '120px' }}>
-      <div className="type-select-trigger" onClick={() => setOpen(o => !o)}
-        style={{ padding: '0.4rem 0.6rem', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.6rem' }}>
-        <CurrentIcon size={18} color="var(--accent-color)" />
-        <span className="type-select-name" style={{ flex: 1 }}>{current.label}</span>
-        <ChevronDown size={14} className={`type-select-chevron ${open ? 'open' : ''}`} style={{ marginLeft: 'auto' }} />
-      </div>
+    <div className="room-action-menu" ref={ref}>
+      <button
+        className="room-menu-btn"
+        title="Room actions"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(prev => !prev);
+        }}
+      >
+        <MoreHorizontal size={18} />
+      </button>
       {open && (
-        <div className="type-select-dropdown" style={{ zIndex: 100 }}>
-          {ICON_OPTIONS.map(opt => {
-            const OptIcon = opt.Icon;
-            return (
-              <div key={opt.value} className={`type-select-option ${opt.value === value ? 'active' : ''}`}
-                onClick={() => { onChange(opt.value); setOpen(false); }}
-                style={{ padding: '0.5rem 0.6rem', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.6rem' }}>
-                <OptIcon size={18} color={opt.value === value ? '#fff' : 'var(--accent-color)'} />
-                <span className="type-select-name">{opt.label}</span>
-              </div>
-            );
-          })}
+        <div className="room-menu-dropdown" onClick={(e) => e.stopPropagation()}>
+          {FLOOR_OPTIONS.filter(opt => opt.value !== (room.floor || 'EG')).map(opt => (
+            <button
+              key={opt.value}
+              className="room-menu-item"
+              onClick={() => {
+                onMoveRoom(room.id, opt.value);
+                setOpen(false);
+              }}
+            >
+              Move room to floor {opt.label}
+            </button>
+          ))}
+          <button
+            className="room-menu-item room-menu-item-danger"
+            onClick={() => {
+              onDeleteRoom(room.id);
+              setOpen(false);
+            }}
+          >
+            Delete room
+          </button>
         </div>
+      )}
+    </div>
+  );
+}
+
+function IconSelect({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const triggerRef = useRef(null);
+  const dropdownRef = useRef(null);
+  const [dropdownStyle, setDropdownStyle] = useState(null);
+  const current = getSelectOption(ICON_OPTIONS, value);
+  const CurrentIcon = current.Icon;
+  const closeDropdown = () => {
+    setOpen(false);
+    setDropdownStyle(null);
+  };
+
+  const updateDropdownStyle = useEffectEvent(() => {
+    if (!triggerRef.current) {
+      return;
+    }
+
+    const nextStyle = getDropdownPosition(
+      triggerRef.current.getBoundingClientRect(),
+      dropdownRef.current?.getBoundingClientRect(),
+      window,
+    );
+    setDropdownStyle(nextStyle);
+  });
+
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) closeDropdown(); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    updateDropdownStyle();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleViewportChange = () => updateDropdownStyle();
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('scroll', handleViewportChange, true);
+
+    return () => {
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('scroll', handleViewportChange, true);
+    };
+  }, [open]);
+
+  return (
+    <div className="type-select icon-select" ref={ref}>
+      <button
+        type="button"
+        ref={triggerRef}
+        className="type-select-trigger icon-select-trigger"
+        onClick={() => {
+          if (open) {
+            closeDropdown();
+          } else {
+            setOpen(true);
+          }
+        }}
+      >
+        <CurrentIcon size={18} className="icon-select-icon" />
+        <span className="type-select-name icon-select-name">{current.label}</span>
+        <ChevronDown size={14} className={`type-select-chevron ${open ? 'open' : ''}`} />
+      </button>
+      {open && (
+        createPortal(
+          <div
+            ref={dropdownRef}
+            className="type-select-dropdown icon-select-dropdown"
+            style={dropdownStyle || undefined}
+          >
+            {ICON_OPTIONS.map(opt => {
+              const OptIcon = opt.Icon;
+              return (
+                <button
+                  type="button"
+                  key={opt.value}
+                  className={`type-select-option icon-select-option ${opt.value === value ? 'active' : ''}`}
+                  onClick={() => { onChange(opt.value); closeDropdown(); }}
+                >
+                  <OptIcon size={18} className="icon-select-icon" />
+                  <span className="type-select-name icon-select-name">{opt.label}</span>
+                </button>
+              );
+            })}
+          </div>,
+          document.body,
+        )
       )}
     </div>
   );
@@ -316,9 +431,9 @@ function SortableFunctionCard({ func, room, handleUpdateFunction, handleDeleteFu
               {func.type === 'switch' && (
                 <div className="settings-field">
                   <label className="settings-field-label">Icon</label>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <div className="icon-select-row">
                     <IconSelect value={func.iconType || 'lightbulb'} onChange={upd('iconType')} />
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                    <label className="icon-invert-toggle">
                       <input type="checkbox" checked={!!func.invertIcon}
                         onChange={(e) => upd('invertIcon')(e.target.checked)} />
                       Invert Icons
@@ -343,7 +458,7 @@ function SortableFunctionCard({ func, room, handleUpdateFunction, handleDeleteFu
 
 function SortableRoomCard({
   room, rooms,
-  handleDeleteRoom, updateRoom,
+  handleDeleteRoom, updateRoom, handleMoveRoom,
   handleAddScene, handleDeleteScene, handleUpdateScene,
   handleAddFunction, handleDeleteFunction, handleUpdateFunction,
   handleGenerateBaseScenes, handleSaveRooms,
@@ -381,27 +496,16 @@ function SortableRoomCard({
           >
             <ChevronRight size={20} />
           </button>
-          <button 
-            className="btn-danger icon-btn" 
-            onClick={(e) => { e.stopPropagation(); handleDeleteRoom(room.id); }} 
-            title="Delete Room"
-          >
-            <Trash2 size={15} />
-          </button>
+          <RoomActionMenu
+            room={room}
+            onMoveRoom={handleMoveRoom}
+            onDeleteRoom={handleDeleteRoom}
+          />
         </div>
       </div>
 
       {/* Collapsible content */}
       <div className={`room-settings-content ${isExpanded ? 'expanded' : 'collapsed'}`}>
-        {/* Floor selector */}
-        <div className="room-floor-section">
-          <label className="settings-field-label">Floor / Etage</label>
-          <FloorSelect 
-            value={room.floor || 'EG'} 
-            onChange={(floor) => updateRoom(room.id, { floor })} 
-          />
-        </div>
-
         {/* ═══ ROOM SCENES ═══ */}
         <div className="room-section">
           <h4 className="section-label">Room Scenes</h4>
@@ -548,62 +652,6 @@ function SortableRoomCard({
   );
 }
 
-// ── Floor Section Component ───────────────────────────────────────────────────
-
-function FloorSection({ 
-  floor, 
-  floorRooms, 
-  allRooms,
-  isExpanded, 
-  onToggleExpand,
-  ...roomCardProps 
-}) {
-  const floorConfig = FLOOR_OPTIONS.find(f => f.value === floor) || { label: floor, fullLabel: floor };
-  const roomIds = floorRooms.map(r => r.id);
-
-  return (
-    <div className={`floor-section ${isExpanded ? 'expanded' : 'collapsed'}`}>
-      <div className="floor-section-header" onClick={onToggleExpand}>
-        <div className="floor-section-info">
-          <Building2 size={20} className="floor-icon" />
-          <div className="floor-section-title">
-            <span className="floor-label">{floorConfig.label}</span>
-            <span className="floor-full">{floorConfig.fullLabel}</span>
-          </div>
-          <span className="floor-room-count">{floorRooms.length} {floorRooms.length === 1 ? 'room' : 'rooms'}</span>
-        </div>
-        <div className="floor-section-actions">
-          <button 
-            className={`floor-expand-btn ${isExpanded ? 'expanded' : ''}`}
-            title={isExpanded ? 'Collapse' : 'Expand'}
-          >
-            <ChevronRight size={22} />
-          </button>
-        </div>
-      </div>
-      
-      <div className={`floor-section-content ${isExpanded ? 'expanded' : 'collapsed'}`}>
-        <SortableContext items={roomIds} strategy={verticalListSortingStrategy}>
-          {floorRooms.map(room => (
-            <SortableRoomCard
-              key={room.id}
-              room={room}
-              rooms={allRooms}
-              isExpanded={roomCardProps.expandedRooms.has(room.id)}
-              onToggleExpand={() => roomCardProps.onToggleRoomExpand(room.id)}
-              {...roomCardProps}
-            />
-          ))}
-        </SortableContext>
-        
-        {floorRooms.length === 0 && (
-          <p className="floor-empty-state">No rooms on this floor yet.</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function Settings({ config, fetchConfig, addToast, hueStatus, setHueStatus }) {
@@ -611,11 +659,9 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
   const [port, setPort] = useState(config.knxPort || 3671);
   const [rooms, setRooms] = useState(() => migrateRooms(config.rooms || []));
   const [newRoomName, setNewRoomName] = useState('');
-  
-  // Floor expansion state (persisted)
-  const [expandedFloors, setExpandedFloors] = useState(() => {
-    const saved = localStorage.getItem('knx_expanded_floors');
-    return saved ? new Set(JSON.parse(saved)) : new Set(config.ui?.expandedFloors || ['EG']);
+  const [selectedFloor, setSelectedFloor] = useState(() => {
+    const saved = localStorage.getItem('knx_selected_floor');
+    return FLOOR_OPTIONS.some(opt => opt.value === saved) ? saved : 'EG';
   });
   
   // Individual room expansion state (persisted)
@@ -652,27 +698,15 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  // Persist expanded floors to localStorage
+  // Persist selected floor to localStorage
   useEffect(() => {
-    localStorage.setItem('knx_expanded_floors', JSON.stringify([...expandedFloors]));
-  }, [expandedFloors]);
+    localStorage.setItem('knx_selected_floor', selectedFloor);
+  }, [selectedFloor]);
 
   // Persist expanded rooms to localStorage
   useEffect(() => {
     localStorage.setItem('knx_expanded_rooms', JSON.stringify([...expandedRooms]));
   }, [expandedRooms]);
-
-  // Sync expanded floors with config
-  useEffect(() => {
-    const updateUiConfig = async () => {
-      try {
-        await updateConfig({ ui: { expandedFloors: [...expandedFloors] } });
-      } catch (e) {
-        // Silent fail - localStorage is our primary persistence
-      }
-    };
-    updateUiConfig();
-  }, [expandedFloors]);
 
   // One-time migration
   function migrateRooms(inputRooms) {
@@ -707,19 +741,8 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
     });
     return grouped;
   }, [rooms]);
-
-  // Floor expansion handlers
-  const toggleFloorExpand = (floor) => {
-    setExpandedFloors(prev => {
-      const next = new Set(prev);
-      if (next.has(floor)) {
-        next.delete(floor);
-      } else {
-        next.add(floor);
-      }
-      return next;
-    });
-  };
+  const selectedFloorRooms = roomsByFloor[selectedFloor] || [];
+  const selectedFloorConfig = FLOOR_OPTIONS.find(floor => floor.value === selectedFloor) || FLOOR_OPTIONS[2];
 
   // Room expansion handlers
   const toggleRoomExpand = (roomId) => {
@@ -883,6 +906,11 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
 
   const updateRoom = (roomId, patch) => setRooms(rooms.map(r => r.id !== roomId ? r : { ...r, ...patch }));
 
+  const handleMoveRoom = (roomId, floor) => {
+    setRooms(prev => prev.map(r => r.id !== roomId ? r : { ...r, floor }));
+    addToast(`Room moved to ${floor}`, 'success');
+  };
+
   const handleAddScene = (roomId, category = 'light') => {
     const room = rooms.find(r => r.id === roomId);
     const used = (room.scenes || []).map(s => s.sceneNumber);
@@ -974,9 +1002,7 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
   const filteredHueLamps = hueLamps.filter(lamp => lamp.name.toLowerCase().includes(hueLampSearch.trim().toLowerCase()));
   const filteredHueRooms = hueRooms.filter(room => room.name.toLowerCase().includes(hueRoomSearch.trim().toLowerCase()));
   const filteredHueScenes = hueScenes.filter(scene => scene.name.toLowerCase().includes(hueSceneSearch.trim().toLowerCase()));
-
-  // Prepare all room IDs for cross-floor drag and drop
-  const allRoomIds = rooms.map(r => r.id);
+  const visibleRoomIds = selectedFloorRooms.map(r => r.id);
 
   return (
     <div className="glass-panel settings-panel">
@@ -1065,8 +1091,24 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
       <div className="settings-section">
         <h2>Rooms &amp; Functions</h2>
         <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-          Group your KNX devices into rooms and configure their functions. Rooms are organized by floor.
+          Group your KNX devices into rooms and configure their functions. Select a floor to view its rooms.
         </p>
+
+        <div className="settings-floor-toolbar">
+          <div className="settings-floor-toolbar-copy">
+            <label className="settings-field-label">Floor / Etage</label>
+            <FloorSelect value={selectedFloor} onChange={setSelectedFloor} />
+          </div>
+          <div className="settings-floor-toolbar-status">
+            <Building2 size={18} className="floor-icon" />
+            <div>
+              <div className="settings-floor-toolbar-title">{selectedFloorConfig.fullLabel}</div>
+              <div className="settings-floor-toolbar-count">
+                {selectedFloorRooms.length} {selectedFloorRooms.length === 1 ? 'room' : 'rooms'}
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div className="knx-ip-row" style={{ marginBottom: '2rem' }}>
           <div className="settings-field" style={{ flex: 1 }}>
@@ -1081,15 +1123,13 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
         </div>
 
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onRoomDragEnd}>
-          <SortableContext items={allRoomIds} strategy={verticalListSortingStrategy}>
-            {FLOOR_OPTIONS.map(floor => (
-              <FloorSection
-                key={floor.value}
-                floor={floor.value}
-                floorRooms={roomsByFloor[floor.value] || []}
-                allRooms={rooms}
-                isExpanded={expandedFloors.has(floor.value)}
-                onToggleExpand={() => toggleFloorExpand(floor.value)}
+          <SortableContext items={visibleRoomIds} strategy={verticalListSortingStrategy}>
+            {selectedFloorRooms.map(room => (
+              <SortableRoomCard
+                key={room.id}
+                room={room}
+                rooms={rooms}
+                handleMoveRoom={handleMoveRoom}
                 handleDeleteRoom={handleDeleteRoom}
                 updateRoom={updateRoom}
                 handleAddScene={handleAddScene}
@@ -1107,12 +1147,16 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
                 onFuncDragEnd={onFuncDragEnd}
                 onSceneDragEnd={onSceneDragEnd}
                 sensors={sensors}
-                expandedRooms={expandedRooms}
-                onToggleRoomExpand={toggleRoomExpand}
+                isExpanded={expandedRooms.has(room.id)}
+                onToggleExpand={() => toggleRoomExpand(room.id)}
               />
             ))}
           </SortableContext>
         </DndContext>
+
+        {rooms.length > 0 && selectedFloorRooms.length === 0 && (
+          <p className="floor-empty-state">No rooms on this floor yet.</p>
+        )}
 
         {rooms.length === 0 && (
           <p style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '2rem' }}>No rooms added yet.</p>

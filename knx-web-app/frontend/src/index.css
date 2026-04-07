@@ -777,6 +777,86 @@ body {
 .type-select-option.active { background: rgba(59, 130, 246, 0.18); }
 .type-select-option.active .type-select-name { color: var(--accent-color); }
 
+.icon-select {
+  flex: 1;
+  min-width: 120px;
+}
+
+.icon-select-trigger {
+  justify-content: flex-start;
+  gap: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  width: 100%;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.icon-select-trigger .type-select-chevron {
+  margin-left: auto;
+}
+
+.icon-select-dropdown {
+  position: absolute;
+  z-index: 150;
+  min-width: 160px;
+  background: linear-gradient(180deg, rgba(30, 33, 40, 0.98) 0%, rgba(22, 24, 29, 0.98) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(16px);
+}
+
+.icon-select-option {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  font-family: inherit;
+}
+
+.icon-select-icon {
+  color: #fff;
+  flex-shrink: 0;
+  stroke: currentColor;
+}
+
+.icon-select-name {
+  flex: 1;
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-primary);
+}
+
+.type-select-option.active .icon-select-icon,
+.type-select-option:hover .icon-select-icon {
+  color: #fff;
+}
+
+.type-select-option.active .icon-select-name,
+.type-select-option:hover .icon-select-name {
+  color: var(--text-primary);
+}
+
+.icon-select-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.icon-invert-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 /* ── GA Field Tooltip ───────────────────────────── */
 .ga-field .settings-field-label {
   display: flex;
@@ -1051,7 +1131,7 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 10px;
   margin-bottom: 0.6rem;
-  overflow: hidden;
+  overflow: visible;
   transition: border-color 0.2s;
 }
 .function-card:hover { border-color: rgba(59, 130, 246, 0.2); }
@@ -1616,6 +1696,45 @@ html { overflow-x: hidden; }
   font-size: 0.9rem;
 }
 
+.settings-floor-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.settings-floor-toolbar-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.settings-floor-toolbar-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.settings-floor-toolbar-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-floor-toolbar-count {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
 /* Floor-specific colors */
 .floor-section[data-floor="KG"] .floor-icon { color: #6b7280; }
 .floor-section[data-floor="UG"] .floor-icon { color: #a855f7; }
@@ -1683,6 +1802,64 @@ html { overflow-x: hidden; }
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.room-action-menu {
+  position: relative;
+}
+
+.room-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  padding: 0.35rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.room-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+
+.room-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  min-width: 220px;
+  background: #1e2128;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  z-index: 120;
+}
+
+.room-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+  padding: 0.75rem 0.9rem;
+  font-size: 0.84rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.room-menu-item:hover {
+  background: rgba(59, 130, 246, 0.14);
+  color: var(--accent-color);
+}
+
+.room-menu-item-danger:hover {
+  background: rgba(239, 68, 68, 0.14);
+  color: #fca5a5;
 }
 
 .room-expand-btn {
@@ -1867,6 +2044,15 @@ html { overflow-x: hidden; }
 
 /* Mobile Responsive for Floors */
 @media (max-width: 640px) {
+  .settings-floor-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-floor-toolbar-status {
+    width: 100%;
+  }
+
   .floor-section {
     border-radius: 12px;
     margin-bottom: 0.75rem;
