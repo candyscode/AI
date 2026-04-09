@@ -361,12 +361,15 @@ function SortableFunctionCard({ func, room, handleUpdateFunction, handleDeleteFu
               {func.type === 'switch' && (
                 <div className="settings-field">
                   <label className="settings-field-label">Icon</label>
-                  <div className="icon-select-row">
+                  <div className="icon-select-stack">
                     <IconSelect value={func.iconType || 'lightbulb'} onChange={upd('iconType')} />
-                    <label className="icon-invert-toggle">
+                    <label className="icon-invert-card">
                       <input type="checkbox" checked={!!func.invertIcon}
                         onChange={(e) => upd('invertIcon')(e.target.checked)} />
-                      Invert Icons
+                      <div className="icon-invert-copy">
+                        <span className="icon-invert-title">Invert icon state</span>
+                        <span className="icon-invert-hint">Swap which icon is shown for OFF / 0 versus ON / 1.</span>
+                      </div>
                     </label>
                   </div>
                 </div>
