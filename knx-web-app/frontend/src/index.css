@@ -778,24 +778,29 @@ body {
 .type-select-option.active .type-select-name { color: var(--accent-color); }
 
 .icon-select {
-  flex: 1;
-  min-width: 120px;
+  width: fit-content;
+  min-width: 0;
+  max-width: 180px;
 }
 
-.icon-select-row {
+.icon-select-stack {
   display: flex;
-  gap: 0.5rem;
-  align-items: center;
+  flex-direction: column;
+  gap: 0.65rem;
+  align-items: flex-start;
 }
 
 .icon-select-trigger {
-  width: 100%;
+  width: 168px;
   justify-content: flex-start;
   gap: 0.6rem;
 }
 
 .icon-select-name {
   flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .icon-select-icon {
@@ -808,7 +813,8 @@ body {
   left: 0;
   right: auto;
   top: 0;
-  min-width: 160px;
+  width: 168px;
+  min-width: 168px;
   z-index: 1000;
 }
 
@@ -827,13 +833,37 @@ body {
   color: #fff;
 }
 
-.icon-invert-toggle {
+.icon-invert-card {
   display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.8rem;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
   color: var(--text-secondary);
-  white-space: nowrap;
+  max-width: 300px;
+}
+
+.icon-invert-card input {
+  margin-top: 0.15rem;
+}
+
+.icon-invert-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.icon-invert-title {
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.icon-invert-hint {
+  font-size: 0.76rem;
+  line-height: 1.35;
 }
 
 /* ── GA Field Tooltip ───────────────────────────── */
