@@ -12,6 +12,13 @@ function isAddressAllowedForMode(address, mode) {
   return true;
 }
 
+function getModeBadgeLabel(mode) {
+  if (mode === 'scene') return 'Filtered list: scene group addresses only';
+  if (mode === 'switch') return 'Filtered list: switch/status group addresses only';
+  if (mode === 'percentage') return 'Filtered list: blind/percentage group addresses only';
+  return '';
+}
+
 export function KNXGroupAddressModal({
   isOpen,
   title,
@@ -65,6 +72,8 @@ export function KNXGroupAddressModal({
   }, [visibleAddresses, roomFilter, searchQuery]);
 
   if (!isOpen) return null;
+
+  const modeBadgeLabel = getModeBadgeLabel(mode);
 
   const handleClose = () => {
     setSearchQuery('');
@@ -173,6 +182,12 @@ export function KNXGroupAddressModal({
         {unsupportedCount > 0 && (
           <div style={{ marginBottom: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
             {unsupportedCount} unsupported group address{unsupportedCount === 1 ? '' : 'es'} hidden because their DPT/DPST is not supported yet.
+          </div>
+        )}
+
+        {modeBadgeLabel && (
+          <div style={{ marginBottom: '0.75rem', color: 'var(--accent-color)', fontSize: '0.8rem', fontWeight: 600 }}>
+            {modeBadgeLabel}
           </div>
         )}
 
