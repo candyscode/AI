@@ -777,6 +777,65 @@ body {
 .type-select-option.active { background: rgba(59, 130, 246, 0.18); }
 .type-select-option.active .type-select-name { color: var(--accent-color); }
 
+.icon-select {
+  flex: 1;
+  min-width: 120px;
+}
+
+.icon-select-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.icon-select-trigger {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 0.6rem;
+}
+
+.icon-select-name {
+  flex: 1;
+}
+
+.icon-select-icon {
+  color: var(--accent-color);
+  flex-shrink: 0;
+}
+
+.icon-select-dropdown {
+  position: fixed;
+  left: 0;
+  right: auto;
+  top: 0;
+  min-width: 160px;
+  z-index: 1000;
+}
+
+.icon-select-option {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.icon-select-option.active .icon-select-icon {
+  color: #fff;
+}
+
+.icon-invert-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 /* ── GA Field Tooltip ───────────────────────────── */
 .ga-field .settings-field-label {
   display: flex;

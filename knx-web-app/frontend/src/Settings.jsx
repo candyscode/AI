@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useEffectEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor,
@@ -11,6 +11,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { updateConfig, discoverHueBridge, pairHueBridge, unpairHueBridge, getHueLights, getHueRooms, getHueScenes, linkHueRoom, unlinkHueRoom, linkHueScene, unlinkHueScene } from './configApi';
 import { KNXGroupAddressModal } from './components/KNXGroupAddressModal';
+import { getDropdownPosition, getSelectOption } from './iconSelectUtils';
 import {
   Plus, Trash2, Save, ChevronDown, HelpCircle, Sparkles,
   Lightbulb, Lock, GripVertical, Search, FileText
@@ -72,35 +73,100 @@ function TypeSelect({ value, onChange }) {
 function IconSelect({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-  const current = ICON_OPTIONS.find(o => o.value === value) || ICON_OPTIONS[0];
+  const triggerRef = useRef(null);
+  const dropdownRef = useRef(null);
+  const [dropdownStyle, setDropdownStyle] = useState(null);
+  const current = getSelectOption(ICON_OPTIONS, value);
   const CurrentIcon = current.Icon;
+
+  const closeDropdown = () => {
+    setOpen(false);
+    setDropdownStyle(null);
+  };
+
+  const updateDropdownStyle = useEffectEvent(() => {
+    if (!triggerRef.current) {
+      return;
+    }
+
+    setDropdownStyle(
+      getDropdownPosition(
+        triggerRef.current.getBoundingClientRect(),
+        dropdownRef.current?.getBoundingClientRect(),
+        window,
+      ),
+    );
+  });
+
   useEffect(() => {
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) closeDropdown(); };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    updateDropdownStyle();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    const handleViewportChange = () => updateDropdownStyle();
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('scroll', handleViewportChange, true);
+
+    return () => {
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('scroll', handleViewportChange, true);
+    };
+  }, [open]);
+
   return (
-    <div className="type-select" ref={ref} style={{ flex: 1, minWidth: '120px' }}>
-      <div className="type-select-trigger" onClick={() => setOpen(o => !o)}
-        style={{ padding: '0.4rem 0.6rem', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.6rem' }}>
-        <CurrentIcon size={18} color="var(--accent-color)" />
-        <span className="type-select-name" style={{ flex: 1 }}>{current.label}</span>
-        <ChevronDown size={14} className={`type-select-chevron ${open ? 'open' : ''}`} style={{ marginLeft: 'auto' }} />
-      </div>
-      {open && (
-        <div className="type-select-dropdown" style={{ zIndex: 100 }}>
+    <div className="type-select icon-select" ref={ref}>
+      <button
+        type="button"
+        ref={triggerRef}
+        className="type-select-trigger icon-select-trigger"
+        onClick={() => {
+          if (open) {
+            closeDropdown();
+          } else {
+            setOpen(true);
+          }
+        }}
+      >
+        <CurrentIcon size={18} className="icon-select-icon" />
+        <span className="type-select-name icon-select-name">{current.label}</span>
+        <ChevronDown size={14} className={`type-select-chevron ${open ? 'open' : ''}`} />
+      </button>
+      {open && createPortal(
+        <div
+          ref={dropdownRef}
+          className="type-select-dropdown icon-select-dropdown"
+          style={dropdownStyle || undefined}
+        >
           {ICON_OPTIONS.map(opt => {
             const OptIcon = opt.Icon;
             return (
-              <div key={opt.value} className={`type-select-option ${opt.value === value ? 'active' : ''}`}
-                onClick={() => { onChange(opt.value); setOpen(false); }}
-                style={{ padding: '0.5rem 0.6rem', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.6rem' }}>
-                <OptIcon size={18} color={opt.value === value ? '#fff' : 'var(--accent-color)'} />
-                <span className="type-select-name">{opt.label}</span>
-              </div>
+              <button
+                type="button"
+                key={opt.value}
+                className={`type-select-option icon-select-option ${opt.value === value ? 'active' : ''}`}
+                onClick={() => { onChange(opt.value); closeDropdown(); }}
+              >
+                <OptIcon size={18} className="icon-select-icon" />
+                <span className="type-select-name icon-select-name">{opt.label}</span>
+              </button>
             );
           })}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -295,9 +361,9 @@ function SortableFunctionCard({ func, room, handleUpdateFunction, handleDeleteFu
               {func.type === 'switch' && (
                 <div className="settings-field">
                   <label className="settings-field-label">Icon</label>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <div className="icon-select-row">
                     <IconSelect value={func.iconType || 'lightbulb'} onChange={upd('iconType')} />
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                    <label className="icon-invert-toggle">
                       <input type="checkbox" checked={!!func.invertIcon}
                         onChange={(e) => upd('invertIcon')(e.target.checked)} />
                       Invert Icons
