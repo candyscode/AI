@@ -106,7 +106,7 @@ function IconSelect({ value, onChange }) {
   );
 }
 
-function GAField({ label, tooltipKey, optional, value, onChange, placeholder, type = 'text', min, max, onBrowse }) {
+function GAField({ label, tooltipKey, optional, value, onChange, placeholder, type = 'text', min, max, onBrowse, browseLabel = 'Search imported addresses' }) {
   return (
     <div className="settings-field ga-field">
       <label className="settings-field-label">
@@ -130,7 +130,15 @@ function GAField({ label, tooltipKey, optional, value, onChange, placeholder, ty
           max={max}
         />
         {onBrowse && type !== 'number' && (
-          <button type="button" className="btn-secondary-sm" onClick={onBrowse}>Browse</button>
+          <button
+            type="button"
+            className="btn-secondary-sm"
+            onClick={onBrowse}
+            aria-label={browseLabel}
+            title={browseLabel}
+          >
+            <Search size={14} />
+          </button>
         )}
       </div>
     </div>
@@ -269,6 +277,7 @@ function SortableFunctionCard({ func, room, handleUpdateFunction, handleDeleteFu
             <div className="func-ga-fields">
               <GAField label="Action GA" tooltipKey="action"
                 value={func.groupAddress} onChange={upd('groupAddress')} placeholder="e.g. 1/5/0"
+                browseLabel="Search ETS addresses for action GA"
                 onBrowse={() => openGroupAddressModal({ roomId: room.id, title: 'Select group address', mode: func.type === 'scene' ? 'scene' : func.type, target: { kind: 'field', functionId: func.id, field: 'groupAddress' }, helperText: 'Select a compatible ETS group address for this field.' })} />
 
               {func.type === 'scene' && (
@@ -279,6 +288,7 @@ function SortableFunctionCard({ func, room, handleUpdateFunction, handleDeleteFu
               {(func.type === 'switch' || func.type === 'percentage') && (
                 <GAField label="Feedback GA" tooltipKey="feedback"
                   value={func.statusGroupAddress} onChange={upd('statusGroupAddress')} placeholder="e.g. 1/5/1"
+                  browseLabel="Search ETS addresses for feedback GA"
                   onBrowse={() => openGroupAddressModal({ roomId: room.id, title: 'Select group address', mode: 'switch', target: { kind: 'field', functionId: func.id, field: 'statusGroupAddress' }, helperText: 'Select a compatible feedback/status GA.' })} />
               )}
 
@@ -299,6 +309,7 @@ function SortableFunctionCard({ func, room, handleUpdateFunction, handleDeleteFu
               {func.type === 'percentage' && (
                 <GAField label="Moving GA" tooltipKey="moving" optional
                   value={func.movingGroupAddress} onChange={upd('movingGroupAddress')} placeholder="e.g. 1/5/2"
+                  browseLabel="Search ETS addresses for moving GA"
                   onBrowse={() => openGroupAddressModal({ roomId: room.id, title: 'Select group address', mode: 'percentage', target: { kind: 'field', functionId: func.id, field: 'movingGroupAddress' }, helperText: 'Select a compatible moving/status GA for blinds.' })} />
               )}
             </div>
@@ -356,6 +367,7 @@ function SortableRoomCard({
             value={room.sceneGroupAddress}
             onChange={(val) => updateRoom(room.id, { sceneGroupAddress: val })}
             placeholder="e.g. 2/5/0"
+            browseLabel="Search ETS addresses for scene GA"
             onBrowse={() => openGroupAddressModal({ roomId: room.id, title: 'Select group address', mode: 'scene', target: { kind: 'sceneGA' }, helperText: 'Select a compatible scene group address.' })} />
         </div>
 

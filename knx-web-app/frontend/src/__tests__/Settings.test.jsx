@@ -256,6 +256,26 @@ describe('Settings — Function management', () => {
       expect(screen.getByPlaceholderText('e.g. Lock Door')).toBeInTheDocument();
     });
   });
+
+  it('uses search icon buttons for imported ETS address lookup on GA fields', async () => {
+    const user = userEvent.setup();
+    renderSettings(CONFIG_WITH_ROOM);
+
+    await user.click(screen.getByRole('button', { name: /add function/i }));
+
+    expect(await screen.findByRole('button', { name: /search ets addresses for action ga/i })).toBeInTheDocument();
+  });
+});
+
+describe('Settings — ETS modal filtering', () => {
+  it('shows a filtered list label for scene GA selection', async () => {
+    const user = userEvent.setup();
+    renderSettings(CONFIG_WITH_ROOM);
+
+    await user.click(screen.getByRole('button', { name: /search ets addresses for scene ga/i }));
+
+    expect(await screen.findByText(/filtered list: scene group addresses only/i)).toBeInTheDocument();
+  });
 });
 
 // ── Philips Hue ───────────────────────────────────────────────────────────────
