@@ -43,6 +43,33 @@ const CONFIG_WITH_ROOM = {
   }],
 };
 
+const CONFIG_WITH_EXISTING_FUNCTIONS = {
+  ...BASE_CONFIG,
+  rooms: [{
+    id: 'r1',
+    name: 'Living Room',
+    sceneGroupAddress: '3/5/0',
+    scenes: [{ id: 's1', name: 'Relax', sceneNumber: 5, category: 'light' }],
+    functions: [
+      {
+        id: 'f1',
+        name: 'Ceiling Light',
+        type: 'switch',
+        groupAddress: '1/1/1',
+        statusGroupAddress: '',
+      },
+      {
+        id: 'f2',
+        name: 'Blind Position',
+        type: 'percentage',
+        groupAddress: '2/1/5',
+        statusGroupAddress: '',
+        movingGroupAddress: '',
+      },
+    ],
+  }],
+};
+
 function renderSettings(config = BASE_CONFIG, hueStatus = { paired: false, bridgeIp: '' }) {
   return render(
     <Settings
@@ -275,6 +302,227 @@ describe('Settings — ETS modal filtering', () => {
     await user.click(screen.getByRole('button', { name: /search ets addresses for scene ga/i }));
 
     expect(await screen.findByText(/filtered list: scene group addresses only/i)).toBeInTheDocument();
+  });
+
+  it('imports ETS XML addresses and creates a typed function from the selected address', async () => {
+    const user = userEvent.setup();
+    renderSettings(CONFIG_WITH_ROOM);
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+      <KNX>
+        <GroupAddresses>
+          <GroupRange Name="House">
+            <GroupRange Name="Living Room">
+              <GroupAddress Id="ga-1" Address="2/1/5" Name="Living Room - Blind Position" DPTs="DPT 5.001" />
+              <GroupAddress Id="ga-2" Address="1/1/1" Name="Living Room - Ceiling Light" DPTs="DPT 1.001" />
+            </GroupRange>
+          </GroupRange>
+        </GroupAddresses>
+      </KNX>`;
+
+    const originalFileReader = window.FileReader;
+    class MockFileReader {
+      constructor() {
+        this.onload = null;
+        this.onerror = null;
+      }
+      readAsText() {
+        this.onload?.({ target: { result: xml } });
+      }
+    }
+    window.FileReader = MockFileReader;
+
+    try {
+      await user.click(screen.getByRole('button', { name: /manage imported ets xml/i }));
+
+      const fileInput = document.querySelector('input[type="file"]');
+      expect(fileInput).not.toBeNull();
+      fireEvent.change(fileInput, { target: { files: [new File([xml], 'ets-export.xml', { type: 'text/xml' })] } });
+
+      expect(await screen.findByText(/imported 2 supported group addresses from ets-export.xml/i)).toBeInTheDocument();
+
+      await user.click(screen.getAllByRole('button', { name: /close/i }).at(-1));
+      await user.click(screen.getByRole('button', { name: /^select group address$/i }));
+      await user.click(await screen.findByRole('button', { name: /living room - blind position/i }));
+
+      await waitFor(() => {
+        expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+          rooms: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'r1',
+              functions: expect.arrayContaining([
+                expect.objectContaining({
+                  name: 'Living Room - Blind Position',
+                  groupAddress: '2/1/5',
+                  type: 'percentage',
+                }),
+              ]),
+            }),
+          ]),
+        }));
+      });
+
+      expect(addToast).toHaveBeenCalledWith('Added "Living Room - Blind Position" from ETS', 'success');
+    } finally {
+      window.FileReader = originalFileReader;
+    }
+  });
+
+  it('assigns imported ETS status and moving addresses to existing function fields', async () => {
+    const user = userEvent.setup();
+    renderSettings(CONFIG_WITH_EXISTING_FUNCTIONS);
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+      <KNX>
+        <GroupAddresses>
+          <GroupRange Name="House">
+            <GroupRange Name="Living Room">
+              <GroupAddress Id="ga-1" Address="1/1/2" Name="Living Room - Ceiling Light Status" DPTs="DPT 1.001" />
+              <GroupAddress Id="ga-2" Address="2/1/6" Name="Living Room - Blind Position Status" DPTs="DPT 5.001" />
+              <GroupAddress Id="ga-3" Address="2/1/7" Name="Living Room - Blind Moving" DPTs="DPT 5.001" />
+            </GroupRange>
+          </GroupRange>
+        </GroupAddresses>
+      </KNX>`;
+
+    const originalFileReader = window.FileReader;
+    class MockFileReader {
+      constructor() {
+        this.onload = null;
+        this.onerror = null;
+      }
+      readAsText() {
+        this.onload?.({ target: { result: xml } });
+      }
+    }
+    window.FileReader = MockFileReader;
+
+    try {
+      await user.click(screen.getByRole('button', { name: /manage imported ets xml/i }));
+
+      const fileInput = document.querySelector('input[type="file"]');
+      expect(fileInput).not.toBeNull();
+      fireEvent.change(fileInput, { target: { files: [new File([xml], 'ets-export.xml', { type: 'text/xml' })] } });
+
+      expect(await screen.findByText(/imported 3 supported group addresses from ets-export.xml/i)).toBeInTheDocument();
+
+      await user.click(screen.getAllByRole('button', { name: /close/i }).at(-1));
+
+      const feedbackButtons = screen.getAllByRole('button', { name: /search ets addresses for feedback ga/i });
+      await user.click(feedbackButtons[0]);
+      expect(await screen.findByText(/filtered list: switch\/status group addresses only/i)).toBeInTheDocument();
+      await user.click(await screen.findByRole('button', { name: /living room - ceiling light status/i }));
+      expect(screen.getByDisplayValue('1/1/2')).toBeInTheDocument();
+
+      const movingButtons = screen.getAllByRole('button', { name: /search ets addresses for moving ga/i });
+      await user.click(movingButtons[0]);
+      expect(await screen.findByText(/filtered list: blind\/percentage group addresses only/i)).toBeInTheDocument();
+      await user.click(await screen.findByRole('button', { name: /living room - blind moving/i }));
+      expect(screen.getByDisplayValue('2/1/7')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /save all changes/i }));
+
+      await waitFor(() => {
+        expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+          rooms: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'r1',
+              functions: expect.arrayContaining([
+                expect.objectContaining({
+                  id: 'f1',
+                  statusGroupAddress: '1/1/2',
+                }),
+                expect.objectContaining({
+                  id: 'f2',
+                  movingGroupAddress: '2/1/7',
+                }),
+              ]),
+            }),
+          ]),
+        }));
+      });
+
+      expect(addToast).toHaveBeenCalledWith('Inserted "Living Room - Ceiling Light Status"', 'success');
+      expect(addToast).toHaveBeenCalledWith('Inserted "Living Room - Blind Moving"', 'success');
+    } finally {
+      window.FileReader = originalFileReader;
+    }
+  });
+
+  it('persists imported scene GA and existing blind status GA in the saved update payload', async () => {
+    const user = userEvent.setup();
+    renderSettings(CONFIG_WITH_EXISTING_FUNCTIONS);
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+      <KNX>
+        <GroupAddresses>
+          <GroupRange Name="House">
+            <GroupRange Name="Living Room">
+              <GroupAddress Id="ga-1" Address="3/5/4" Name="Living Room - Scene Control" DPTs="DPT 17.001" />
+              <GroupAddress Id="ga-2" Address="2/1/6" Name="Living Room - Blind Position Status" DPTs="DPT 5.001" />
+            </GroupRange>
+          </GroupRange>
+        </GroupAddresses>
+      </KNX>`;
+
+    const originalFileReader = window.FileReader;
+    class MockFileReader {
+      constructor() {
+        this.onload = null;
+        this.onerror = null;
+      }
+      readAsText() {
+        this.onload?.({ target: { result: xml } });
+      }
+    }
+    window.FileReader = MockFileReader;
+
+    try {
+      await user.click(screen.getByRole('button', { name: /manage imported ets xml/i }));
+
+      const fileInput = document.querySelector('input[type="file"]');
+      expect(fileInput).not.toBeNull();
+      fireEvent.change(fileInput, { target: { files: [new File([xml], 'ets-export.xml', { type: 'text/xml' })] } });
+
+      expect(await screen.findByText(/imported 2 supported group addresses from ets-export.xml/i)).toBeInTheDocument();
+
+      await user.click(screen.getAllByRole('button', { name: /close/i }).at(-1));
+
+      await user.click(screen.getByRole('button', { name: /search ets addresses for scene ga/i }));
+      expect(await screen.findByText(/filtered list: scene group addresses only/i)).toBeInTheDocument();
+      await user.click(await screen.findByRole('button', { name: /living room - scene control/i }));
+      expect(screen.getByDisplayValue('3/5/4')).toBeInTheDocument();
+
+      const feedbackButtons = screen.getAllByRole('button', { name: /search ets addresses for feedback ga/i });
+      await user.click(feedbackButtons[1]);
+      expect(await screen.findByText(/filtered list: blind\/percentage group addresses only/i)).toBeInTheDocument();
+      await user.click(await screen.findByRole('button', { name: /living room - blind position status/i }));
+      expect(screen.getByDisplayValue('2/1/6')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /save all changes/i }));
+
+      await waitFor(() => {
+        expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+          rooms: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'r1',
+              sceneGroupAddress: '3/5/4',
+              functions: expect.arrayContaining([
+                expect.objectContaining({
+                  id: 'f2',
+                  statusGroupAddress: '2/1/6',
+                }),
+              ]),
+            }),
+          ]),
+        }));
+      });
+
+      expect(addToast).toHaveBeenCalledWith('Selected scene GA "Living Room - Scene Control"', 'success');
+      expect(addToast).toHaveBeenCalledWith('Inserted "Living Room - Blind Position Status"', 'success');
+    } finally {
+      window.FileReader = originalFileReader;
+    }
   });
 });
 
