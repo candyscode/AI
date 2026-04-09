@@ -217,7 +217,7 @@ function SortableSceneRow({ sc, roomId, handleUpdateScene, handleDeleteScene, hu
 
 // ── Sortable Function Card ────────────────────────────────────────────────────
 
-function SortableFunctionCard({ func, room, handleUpdateFunction, handleDeleteFunction, hueStatus }) {
+function SortableFunctionCard({ func, room, handleUpdateFunction, handleDeleteFunction, hueStatus, openGroupAddressModal }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: func.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
@@ -289,7 +289,7 @@ function SortableFunctionCard({ func, room, handleUpdateFunction, handleDeleteFu
                 <GAField label="Feedback GA" tooltipKey="feedback"
                   value={func.statusGroupAddress} onChange={upd('statusGroupAddress')} placeholder="e.g. 1/5/1"
                   browseLabel="Search ETS addresses for feedback GA"
-                  onBrowse={() => openGroupAddressModal({ roomId: room.id, title: 'Select group address', mode: 'switch', target: { kind: 'field', functionId: func.id, field: 'statusGroupAddress' }, helperText: 'Select a compatible feedback/status GA.' })} />
+                  onBrowse={() => openGroupAddressModal({ roomId: room.id, title: 'Select group address', mode: func.type, target: { kind: 'field', functionId: func.id, field: 'statusGroupAddress' }, helperText: 'Select a compatible feedback/status GA.' })} />
               )}
 
               {func.type === 'switch' && (
@@ -469,6 +469,7 @@ function SortableRoomCard({
                 handleUpdateFunction={handleUpdateFunction}
                 handleDeleteFunction={handleDeleteFunction}
                 hueStatus={hueStatus}
+                openGroupAddressModal={openGroupAddressModal}
               />
             ))}
           </SortableContext>
