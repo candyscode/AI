@@ -1555,3 +1555,431 @@ html { overflow-x: hidden; }
   /* Modal */
   .modal-content { width: 96vw; padding: 1rem; }
 }
+
+/* ─────────────────────────────────────────────────────
+   FLOOR TABS — Browser-style
+   ───────────────────────────────────────────────────── */
+
+.floor-tabs-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.floor-tabs-wrapper::-webkit-scrollbar { display: none; }
+
+.floor-tabs-strip {
+  display: flex;
+  align-items: flex-end;      /* tabs sit on the bottom line */
+  gap: 0;                     /* no gap — real tabs are adjacent */
+  padding: 0.75rem 1.5rem 0;  /* top padding matches settings-floors-header */
+  min-width: max-content;
+  border-bottom: 2px solid var(--border-color);
+  position: relative;
+}
+
+/* Individual tab */
+.floor-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.5rem 1rem;
+  border-radius: 8px 8px 0 0;          /* rounded top, flat bottom */
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  position: relative;
+  bottom: -2px;                        /* overlap the strip bottom border */
+  transition: background 0.15s, border-color 0.15s;
+  margin-right: 2px;
+}
+
+.floor-tab:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.1);
+}
+
+.floor-tab.active {
+  background: var(--glass-bg);         /* same as the panel below */
+  border-color: var(--border-color);
+  border-bottom: 2px solid var(--glass-bg); /* hide the bottom border = seamless merge */
+}
+
+.floor-tab-grip {
+  display: inline-flex;
+  align-items: center;
+  color: rgba(255,255,255,0.2);
+  cursor: grab;
+  touch-action: none;
+  flex-shrink: 0;
+  padding: 1px;
+  transition: color 0.15s;
+}
+.floor-tab-grip:hover { color: rgba(255,255,255,0.6); }
+.floor-tab-grip:active { cursor: grabbing; }
+
+.floor-tab-label {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: color 0.15s;
+}
+.floor-tab:hover .floor-tab-label { color: var(--text-primary); }
+.floor-tab.active .floor-tab-label { color: var(--text-primary); }
+
+.floor-tab-count {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.08rem 0.4rem;
+  border-radius: 99px;
+  background: rgba(255,255,255,0.08);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+.floor-tab.active .floor-tab-count {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--accent-color);
+}
+
+.floor-tab-delete {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.floor-tab-delete:hover { color: var(--danger-color); background: rgba(239,68,68,0.1); }
+
+/* "+ Add Floor" button — sits in the tab bar */
+.floor-tab-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px 8px 0 0;
+  border: 1px dashed rgba(255,255,255,0.15);
+  border-bottom: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  position: relative;
+  bottom: -2px;
+  margin-left: 4px;
+}
+.floor-tab-add:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  background: rgba(59,130,246,0.06);
+}
+
+.floor-tab-new-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding-bottom: 4px;
+  margin-left: 6px;
+}
+
+.floor-tab-input {
+  width: 140px !important;
+  padding: 0.35rem 0.6rem !important;
+  font-size: 0.85rem !important;
+  height: 32px;
+}
+
+.floor-tab-confirm, .floor-tab-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.06);
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.floor-tab-confirm:hover { background: var(--success-color); color: white; border-color: var(--success-color); }
+.floor-tab-cancel:hover  { background: rgba(239,68,68,0.2); color: var(--danger-color); }
+
+/* Inline rename inputs */
+.floor-tab-rename-input {
+  width: 110px;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  font-weight: 600;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid var(--accent-color);
+  border-radius: 5px;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.room-name-editable {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.room-name-heading {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.room-rename-btn {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+.room-settings-header:hover .room-rename-btn { opacity: 1; }
+.room-rename-btn:hover { color: var(--accent-color); }
+
+.room-name-input {
+  flex: 1;
+  min-width: 80px;
+  max-width: 260px;
+  padding: 0.2rem 0.5rem;
+  font-size: 1rem;
+  font-family: inherit;
+  font-weight: 600;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid var(--accent-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  outline: none;
+}
+
+
+/* ─────────────────────────────────────────────────────
+   SETTINGS PAGE LAYOUT
+   ───────────────────────────────────────────────────── */
+
+.settings-floors-header {
+  /* Tab strip is self-contained: it owns padding + border-bottom */
+  padding: 0;
+  background: rgba(0,0,0,0.1);
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+}
+
+.settings-add-room-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.settings-rooms-body {
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.settings-empty-floor {
+  text-align: center;
+  padding: 3rem 2rem;
+  color: var(--text-secondary);
+}
+.settings-empty-floor strong { color: var(--text-primary); }
+
+/* ─────────────────────────────────────────────────────
+   COLLAPSIBLE ROOM CARD
+   ───────────────────────────────────────────────────── */
+
+.room-collapse-header {
+  cursor: pointer;
+  transition: background 0.15s;
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  margin: -0.25rem -0.25rem 0;
+}
+.room-collapse-header:hover { background: rgba(255,255,255,0.03); }
+
+.room-settings-card.collapsed .room-collapse-header {
+  margin-bottom: 0;
+  border-bottom: none;
+}
+
+.room-collapse-chevron {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  transition: transform 0.25s ease;
+}
+.room-collapse-chevron.open { transform: rotate(-180deg); }
+
+.room-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.room-meta-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.12rem 0.45rem;
+  border-radius: 99px;
+  background: rgba(255,255,255,0.06);
+  color: var(--text-secondary);
+  border: 1px solid rgba(255,255,255,0.08);
+  white-space: nowrap;
+}
+
+.room-card-body {
+  padding-top: 0.75rem;
+  animation: expandDown 0.2s ease;
+}
+
+@keyframes expandDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Move-to-floor select */
+.room-move-select {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.28rem 0.6rem;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.15s;
+  max-width: 130px;
+}
+.room-move-select:hover { border-color: var(--accent-color); color: var(--accent-color); }
+
+/* ─────────────────────────────────────────────────────
+   CONNECTIONS PAGE
+   ───────────────────────────────────────────────────── */
+
+.connections-page {
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+.connections-section {
+  margin-top: 1.75rem;
+  padding-top: 1.75rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.connections-section-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.connections-section-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.knx-icon  { background: rgba(59,130,246,0.12);  color: var(--accent-color); }
+.ets-icon  { background: rgba(16,185,129,0.12);  color: var(--success-color); }
+.hue-icon  { background: rgba(167,139,250,0.15); color: #c4b5fd; }
+
+.ets-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 8px;
+  background: rgba(16,185,129,0.08);
+  border: 1px solid rgba(16,185,129,0.2);
+  font-size: 0.82rem;
+}
+.ets-status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--success-color);
+  flex-shrink: 0;
+  box-shadow: 0 0 6px var(--success-color);
+}
+
+/* btn-secondary (full-size, not -sm) */
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-secondary:hover { background: rgba(255,255,255,0.12); }
+
+/* Dashboard: slight top margin when floor tabs are visible */
+.room-grid--with-tabs { margin-top: 1rem; }
+
+/* ─────────────────────────────────────────────────────
+   MOBILE: ADDITIONAL OVERRIDES FOR NEW COMPONENTS
+   ───────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .settings-floors-header { border-radius: 0; overflow: hidden; }
+  .settings-add-room-bar { padding: 0.75rem; flex-wrap: wrap; }
+  .settings-rooms-body { padding: 0.75rem; }
+
+  .room-collapse-header { padding: 0.75rem; }
+  .room-card-meta { gap: 0.35rem; }
+  .room-meta-badge { font-size: 0.65rem; }
+  .room-move-select { max-width: 100px; font-size: 0.72rem; }
+
+  .connections-page { padding: 0; border-radius: 0; border-left: none; border-right: none;
+    margin-left: -0.6rem; margin-right: -0.6rem; width: calc(100% + 1.2rem); }
+  .connections-section { padding: 1rem 0.75rem; }
+  .connections-section-header { gap: 0.75rem; }
+  .connections-section-icon { width: 36px; height: 36px; }
+
+  .floor-tab-input { width: 110px !important; }
+}
+

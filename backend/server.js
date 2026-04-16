@@ -51,10 +51,19 @@ function normalizeConfigShape(input) {
   if (!input.knxPort) input.knxPort = 3671;
   if (!input.hue) input.hue = { bridgeIp: '', apiKey: '' };
   if (!Array.isArray(input.rooms)) input.rooms = [];
+  if (!Array.isArray(input.floors)) input.floors = [];
   input.importedGroupAddresses = normalizeImportedGroupAddresses(input.importedGroupAddresses);
   input.importedGroupAddressesFileName = typeof input.importedGroupAddressesFileName === 'string'
     ? input.importedGroupAddressesFileName
     : '';
+}
+
+/** Returns a flat list of all rooms, whether stored under floors[] or legacy rooms[] */
+function allRooms() {
+  if (config.floors && config.floors.length > 0) {
+    return config.floors.flatMap(f => f.rooms || []);
+  }
+  return config.rooms || [];
 }
 
 function establishConnection() {
@@ -64,7 +73,7 @@ function establishConnection() {
       const statusGAs = new Set();
       const gaToType = {};
       
-      config.rooms.forEach(room => {
+      allRooms().forEach(room => {
         if (!room.functions) return;
         room.functions.forEach(func => {
           if (func.statusGroupAddress) {
@@ -136,7 +145,7 @@ app.get('/api/config', (req, res) => {
 });
 
 app.post('/api/config', (req, res) => {
-  const { knxIp, knxPort, rooms, importedGroupAddresses, importedGroupAddressesFileName } = req.body;
+  const { knxIp, knxPort, rooms, floors, importedGroupAddresses, importedGroupAddressesFileName } = req.body;
   
   let shouldReconnect = false;
 
@@ -154,7 +163,12 @@ app.post('/api/config', (req, res) => {
     establishConnection();
   }
   
-  if (rooms !== undefined) {
+  // Support both legacy rooms[] and new floors[]
+  if (floors !== undefined) {
+    config.floors = floors;
+    // Keep legacy rooms[] in sync for backwards compatibility
+    config.rooms = floors.flatMap(f => f.rooms || []);
+  } else if (rooms !== undefined) {
     config.rooms = rooms;
   }
 
@@ -225,7 +239,7 @@ app.post('/api/action', async (req, res) => {
 async function triggerLinkedHueScene(groupAddress, sceneNumber) {
   if (!hueService.isPaired) return;
 
-  for (const room of config.rooms) {
+  for (const room of allRooms()) {
     if (room.sceneGroupAddress !== groupAddress) continue;
 
     const scene = (room.scenes || []).find(s => s.sceneNumber === sceneNumber && s.category !== 'shade');
@@ -298,7 +312,7 @@ app.post('/api/config/rooms/:roomId/hue-room', (req, res) => {
   const { hueRoomId } = req.body;
   if (!hueRoomId) return res.status(400).json({ success: false, error: 'hueRoomId required' });
 
-  const room = config.rooms.find(r => r.id === roomId);
+  const room = allRooms().find(r => r.id === roomId);
   if (!room) return res.status(404).json({ success: false, error: 'Room not found' });
 
   room.hueRoomId = hueRoomId;
@@ -308,7 +322,7 @@ app.post('/api/config/rooms/:roomId/hue-room', (req, res) => {
 
 app.delete('/api/config/rooms/:roomId/hue-room', (req, res) => {
   const { roomId } = req.params;
-  const room = config.rooms.find(r => r.id === roomId);
+  const room = allRooms().find(r => r.id === roomId);
   if (!room) return res.status(404).json({ success: false, error: 'Room not found' });
 
   delete room.hueRoomId;
@@ -322,7 +336,7 @@ app.post('/api/config/scenes/:sceneId/hue-scene', (req, res) => {
   if (!hueSceneId) return res.status(400).json({ success: false, error: 'hueSceneId required' });
 
   let found = false;
-  for (const room of config.rooms) {
+  for (const room of allRooms()) {
     const scene = (room.scenes || []).find(s => s.id === sceneId);
     if (scene) {
       scene.hueSceneId = hueSceneId;
@@ -340,7 +354,7 @@ app.delete('/api/config/scenes/:sceneId/hue-scene', (req, res) => {
   const { sceneId } = req.params;
 
   let found = false;
-  for (const room of config.rooms) {
+  for (const room of allRooms()) {
     const scene = (room.scenes || []).find(s => s.id === sceneId);
     if (scene) {
       delete scene.hueSceneId;
@@ -376,7 +390,7 @@ function startHuePolling() {
   huePollingInterval = setInterval(async () => {
     // Collect all Hue light IDs referenced in rooms
     const hueIds = new Set();
-    config.rooms.forEach(room => {
+    allRooms().forEach(room => {
       (room.functions || []).forEach(f => {
         if (f.type === 'hue' && f.hueLightId) hueIds.add(f.hueLightId);
       });
