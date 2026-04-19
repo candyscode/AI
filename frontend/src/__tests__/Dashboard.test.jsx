@@ -59,13 +59,26 @@ const ROOM_WITH_BLIND = {
 };
 
 function renderDashboard(props = {}) {
+  const floors = props.floors
+    || ((props.rooms && props.rooms.length > 0)
+      ? [{ id: 'floor-1', name: 'Ground Floor', rooms: props.rooms }]
+      : []);
+
   return render(
     <Dashboard
-      config={{ rooms: props.rooms || [], floors: props.floors || [], globals: props.globals || [] }}
+      apartment={{ id: 'apartment_1', name: 'Wohnung 1', slug: 'wohnung-1' }}
+      config={{
+        apartmentId: 'apartment_1',
+        floors,
+        sharedInfos: props.sharedInfos || [],
+        alarms: props.alarms || [],
+      }}
       deviceStates={props.deviceStates || {}}
       hueStates={props.hueStates || {}}
       setDeviceStates={props.setDeviceStates || vi.fn()}
       setHueStates={props.setHueStates || vi.fn()}
+      setSharedDeviceStates={props.setSharedDeviceStates || vi.fn()}
+      setSharedHueStates={props.setSharedHueStates || vi.fn()}
       addToast={addToast}
     />
   );
@@ -114,11 +127,13 @@ describe('Dashboard — room card', () => {
 });
 
 describe('Dashboard — globals widget', () => {
-  it('renders global info values and active alarms from config.globals', () => {
+  it('renders shared info values and apartment alarms', () => {
     renderDashboard({
       rooms: [ROOM_WITH_SCENES],
-      globals: [
+      sharedInfos: [
         { id: 'g1', name: 'Outside Temperature', type: 'info', category: 'temperature', statusGroupAddress: '9/1/1' },
+      ],
+      alarms: [
         { id: 'g2', name: 'Rain Alarm', type: 'alarm', category: 'alarm', statusGroupAddress: '1/7/1' },
       ],
       deviceStates: {
@@ -153,6 +168,8 @@ describe('Dashboard — light scenes', () => {
     await user.click(screen.getByText('Relax'));
 
     expect(api.triggerAction).toHaveBeenCalledWith({
+      apartmentId: 'apartment_1',
+      scope: 'apartment',
       groupAddress: '3/5/0',
       type: 'scene',
       sceneNumber: 5,
@@ -216,7 +233,11 @@ describe('Dashboard — switch function', () => {
     await user.click(screen.getByText('Main Light').closest('button'));
 
     expect(setDeviceStates).toHaveBeenCalled();
-    expect(api.triggerAction).toHaveBeenCalledWith(expect.objectContaining({ type: 'switch' }));
+    expect(api.triggerAction).toHaveBeenCalledWith(expect.objectContaining({
+      apartmentId: 'apartment_1',
+      scope: 'apartment',
+      type: 'switch'
+    }));
   });
 
   it('reverts optimistic state on API failure', async () => {
@@ -266,7 +287,7 @@ describe('Dashboard — Hue lamp function', () => {
     await user.click(screen.getByText('Ambient Light').closest('button'));
 
     expect(setHueStates).toHaveBeenCalled();
-    expect(api.triggerHueAction).toHaveBeenCalledWith('1', true);
+    expect(api.triggerHueAction).toHaveBeenCalledWith('1', true, { apartmentId: 'apartment_1', scope: 'apartment' });
   });
 
   it('reverts Hue optimistic update on API failure', async () => {

@@ -59,6 +59,33 @@ body {
   margin-bottom: 2rem;
 }
 
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.app-apartment-switcher {
+  min-width: 220px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 10px;
+  padding: 0.7rem 2.4rem 0.7rem 0.9rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
 .header h1 {
   font-size: 1.75rem;
   font-weight: 700;
@@ -1581,10 +1608,12 @@ html { overflow-x: hidden; }
 .floor-tabs-wrapper {
   width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   flex: 1;
   min-width: 0;
+  overscroll-behavior-x: contain;
 }
 .floor-tabs-wrapper::-webkit-scrollbar { display: none; }
 
@@ -1642,6 +1671,7 @@ html { overflow-x: hidden; }
   color: rgba(255,255,255,0.2);
   cursor: grab;
   touch-action: none;
+  user-select: none;
   flex-shrink: 0;
   padding: 1px;
   transition: color 0.15s;
@@ -1678,6 +1708,18 @@ html { overflow-x: hidden; }
 .floor-tab.active .floor-tab-count {
   background: rgba(59, 130, 246, 0.2);
   color: var(--accent-color);
+}
+
+.floor-tab-shared-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.12rem 0.42rem;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.14);
+  color: #86efac;
+  border: 1px solid rgba(16, 185, 129, 0.22);
 }
 
 .floor-tab-delete {
@@ -1855,6 +1897,16 @@ html { overflow-x: hidden; }
   z-index: 1;
 }
 
+.settings-area-actions {
+  position: absolute;
+  top: 0.6rem;
+  left: 1rem;
+  display: flex;
+  gap: 0.5rem;
+  z-index: 1;
+  flex-wrap: wrap;
+}
+
 .settings-add-room-bar {
   display: flex;
   align-items: flex-end;
@@ -1964,6 +2016,13 @@ html { overflow-x: hidden; }
   gap: 1rem;
 }
 
+.connections-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
 .connections-section-icon {
   width: 42px;
   height: 42px;
@@ -2020,7 +2079,21 @@ html { overflow-x: hidden; }
    MOBILE: ADDITIONAL OVERRIDES FOR NEW COMPONENTS
    ───────────────────────────────────────────────────── */
 @media (max-width: 640px) {
+  .header-brand,
+  .header-controls {
+    width: 100%;
+  }
+
+  .app-apartment-switcher {
+    width: 100%;
+    min-width: 0;
+  }
+
   .settings-floors-header { border-radius: 0; overflow: hidden; }
+  .settings-area-actions {
+    position: static;
+    padding: 0 0.75rem 0.75rem;
+  }
   .settings-add-room-bar { padding: 0.75rem; flex-wrap: wrap; }
   .settings-rooms-body { padding: 0.75rem; }
 

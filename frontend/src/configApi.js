@@ -1,9 +1,19 @@
 const getApiBase = () => {
   if (import.meta.env.VITE_BACKEND_URL) return `${import.meta.env.VITE_BACKEND_URL}/api`;
   if (import.meta.env.DEV) return 'http://localhost:3001/api';
-  return '/api'; // Use relative path when statically served
+  return '/api';
 };
+
 const API_BASE = getApiBase();
+
+const withQuery = (path, params = {}) => {
+  const url = new URL(path, 'http://localhost');
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    url.searchParams.set(key, value);
+  });
+  return `${API_BASE}${url.pathname}${url.search}`;
+};
 
 export const getConfig = async () => {
   const res = await fetch(`${API_BASE}/config`);
@@ -35,75 +45,85 @@ export const triggerAction = async (actionData) => {
   return res.json();
 };
 
-// ── Hue API ──
-
-export const discoverHueBridge = async () => {
-  const res = await fetch(`${API_BASE}/hue/discover`, { method: 'POST' });
+export const discoverHueBridge = async (apartmentId) => {
+  const res = await fetch(`${API_BASE}/hue/discover`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apartmentId })
+  });
   return res.json();
 };
 
-export const pairHueBridge = async (bridgeIp) => {
+export const pairHueBridge = async (apartmentId, bridgeIp) => {
   const res = await fetch(`${API_BASE}/hue/pair`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bridgeIp })
+    body: JSON.stringify({ apartmentId, bridgeIp })
   });
   return res.json();
 };
 
-export const unpairHueBridge = async () => {
-  const res = await fetch(`${API_BASE}/hue/unpair`, { method: 'POST' });
+export const unpairHueBridge = async (apartmentId) => {
+  const res = await fetch(`${API_BASE}/hue/unpair`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apartmentId })
+  });
   return res.json();
 };
 
-export const getHueLights = async () => {
-  const res = await fetch(`${API_BASE}/hue/lights`);
+export const getHueLights = async ({ apartmentId, scope = 'apartment' } = {}) => {
+  const res = await fetch(withQuery('/hue/lights', { apartmentId, scope }));
   return res.json();
 };
 
-export const getHueRooms = async () => {
-  const res = await fetch(`${API_BASE}/hue/rooms`);
+export const getHueRooms = async ({ apartmentId, scope = 'apartment' } = {}) => {
+  const res = await fetch(withQuery('/hue/rooms', { apartmentId, scope }));
   return res.json();
 };
 
-export const getHueScenes = async () => {
-  const res = await fetch(`${API_BASE}/hue/scenes`);
+export const getHueScenes = async ({ apartmentId, scope = 'apartment' } = {}) => {
+  const res = await fetch(withQuery('/hue/scenes', { apartmentId, scope }));
   return res.json();
 };
 
-export const linkHueRoom = async (roomId, hueRoomId) => {
+export const linkHueRoom = async (roomId, hueRoomId, { apartmentId, scope = 'apartment' } = {}) => {
   const res = await fetch(`${API_BASE}/config/rooms/${roomId}/hue-room`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ hueRoomId })
+    body: JSON.stringify({ apartmentId, scope, hueRoomId })
   });
   return res.json();
 };
 
-export const unlinkHueRoom = async (roomId) => {
-  const res = await fetch(`${API_BASE}/config/rooms/${roomId}/hue-room`, { method: 'DELETE' });
+export const unlinkHueRoom = async (roomId, { apartmentId, scope = 'apartment' } = {}) => {
+  const res = await fetch(withQuery(`/config/rooms/${roomId}/hue-room`, { apartmentId, scope }), {
+    method: 'DELETE'
+  });
   return res.json();
 };
 
-export const linkHueScene = async (sceneId, hueSceneId) => {
+export const linkHueScene = async (sceneId, hueSceneId, { apartmentId, scope = 'apartment' } = {}) => {
   const res = await fetch(`${API_BASE}/config/scenes/${sceneId}/hue-scene`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ hueSceneId })
+    body: JSON.stringify({ apartmentId, scope, hueSceneId })
   });
   return res.json();
 };
 
-export const unlinkHueScene = async (sceneId) => {
-  const res = await fetch(`${API_BASE}/config/scenes/${sceneId}/hue-scene`, { method: 'DELETE' });
+export const unlinkHueScene = async (sceneId, { apartmentId, scope = 'apartment' } = {}) => {
+  const res = await fetch(withQuery(`/config/scenes/${sceneId}/hue-scene`, { apartmentId, scope }), {
+    method: 'DELETE'
+  });
   return res.json();
 };
 
-export const triggerHueAction = async (lightId, on) => {
+export const triggerHueAction = async (lightId, on, { apartmentId, scope = 'apartment' } = {}) => {
   const res = await fetch(`${API_BASE}/hue/action`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lightId, on })
+    body: JSON.stringify({ apartmentId, scope, lightId, on })
   });
   return res.json();
 };

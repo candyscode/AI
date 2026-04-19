@@ -32,18 +32,14 @@ function migrateRooms(inputRooms) {
 }
 
 function migrateConfig(config) {
-  if (config.floors && config.floors.length > 0) return config.floors;
-  return [{
-    id: 'floor_default',
-    name: 'Ground Floor',
-    rooms: migrateRooms(config.rooms || []),
-  }];
+  return Array.isArray(config.floors) ? config.floors : [];
 }
 
 // ── Main Settings ─────────────────────────────────────────
-export default function Settings({ config, fetchConfig, addToast, hueStatus, setHueStatus }) {
+export default function Settings({ fullConfig, apartment, config, fetchConfig, applyConfig, addToast, hueStatus, sharedHueStatus }) {
   const [floors, setFloors] = useState(() => migrateConfig(config));
-  const [globals, setGlobals] = useState(() => Array.isArray(config.globals) ? config.globals : []);
+  const [sharedInfos, setSharedInfos] = useState(() => Array.isArray(config.sharedInfos) ? config.sharedInfos : []);
+  const [alarms, setAlarms] = useState(() => Array.isArray(config.alarms) ? config.alarms : []);
   const [activeFloorId, setActiveFloorId] = useState(() => {
     const f = migrateConfig(config);
     return f[0]?.id || null;
@@ -67,20 +63,33 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
   const [hueScenes, setHueScenes] = useState([]);
   const [hueScenesLoading, setHueScenesLoading] = useState(false);
 
-  const [groupAddressModal, setGroupAddressModal] = useState({ open: false, roomId: null, floorId: null, title: '', mode: 'any', dptFilter: null, target: null, allowUpload: false, helperText: '' });
-  const [groupAddressBook, setGroupAddressBook] = useState([]);
-  const [groupAddressFileName, setGroupAddressFileName] = useState('');
+  const [groupAddressModal, setGroupAddressModal] = useState({
+    open: false,
+    roomId: null,
+    floorId: null,
+    title: '',
+    mode: 'any',
+    dptFilter: null,
+    target: null,
+    allowUpload: false,
+    helperText: '',
+    scope: 'apartment'
+  });
+  const [apartmentGroupAddressBook, setApartmentGroupAddressBook] = useState([]);
+  const [apartmentGroupAddressFileName, setApartmentGroupAddressFileName] = useState('');
+  const [sharedGroupAddressBook, setSharedGroupAddressBook] = useState([]);
+  const [sharedGroupAddressFileName, setSharedGroupAddressFileName] = useState('');
 
   useEffect(() => {
-    // NOTE: floors are intentionally NOT reset here.
-    // They are initialised once via useState(() => migrateConfig(config)) on mount.
-    // Resetting floors on every config change caused a flicker/wipe bug:
-    // saveFloors → fetchConfig → setConfig → this effect → setFloors(old data).
-    // On next mount (navigate away + back) useState re-initialises from the latest config.
-    setGlobals(Array.isArray(config.globals) ? config.globals : []);
-    setGroupAddressBook(Array.isArray(config.importedGroupAddresses) ? config.importedGroupAddresses : []);
-    setGroupAddressFileName(config.importedGroupAddressesFileName || '');
-  }, [config]);
+    setFloors(migrateConfig(config));
+    setSharedInfos(Array.isArray(config.sharedInfos) ? config.sharedInfos : []);
+    setAlarms(Array.isArray(config.alarms) ? config.alarms : []);
+    setActiveFloorId(migrateConfig(config)[0]?.id || null);
+    setApartmentGroupAddressBook(Array.isArray(config.importedGroupAddresses) ? config.importedGroupAddresses : []);
+    setApartmentGroupAddressFileName(config.importedGroupAddressesFileName || '');
+    setSharedGroupAddressBook(Array.isArray(config.sharedImportedGroupAddresses) ? config.sharedImportedGroupAddresses : []);
+    setSharedGroupAddressFileName(config.sharedImportedGroupAddressesFileName || '');
+  }, [apartment?.id]);
 
 
   const sensors = useSensors(
@@ -91,9 +100,55 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
 
   // ── Floor helpers ────────────────────────────────────────
   const activeFloor = floors.find(f => f.id === activeFloorId) || floors[0];
+  const modalAddressBook = groupAddressModal.scope === 'shared' ? sharedGroupAddressBook : apartmentGroupAddressBook;
+  const modalAddressFileName = groupAddressModal.scope === 'shared' ? sharedGroupAddressFileName : apartmentGroupAddressFileName;
 
-  const handleAddFloor = (name) => {
-    const newFloor = { id: `floor_${Date.now()}`, name, rooms: [] };
+  const stripSharedMarker = (entries) => entries.map(({ isShared, ...floor }) => ({
+    ...floor,
+    rooms: Array.isArray(floor.rooms) ? floor.rooms : [],
+  }));
+
+  const buildNextConfig = ({
+    nextFloors = floors,
+    nextSharedInfos = sharedInfos,
+    nextAlarms = alarms,
+    nextApartmentGroupAddressBook = apartmentGroupAddressBook,
+    nextApartmentGroupAddressFileName = apartmentGroupAddressFileName,
+    nextSharedGroupAddressBook = sharedGroupAddressBook,
+    nextSharedGroupAddressFileName = sharedGroupAddressFileName,
+  } = {}) => {
+    const privateFloors = stripSharedMarker(nextFloors.filter((floor) => !floor.isShared));
+    const sharedAreas = stripSharedMarker(nextFloors.filter((floor) => floor.isShared));
+    const areaOrder = nextFloors.map((floor) => floor.id);
+
+    return {
+      ...fullConfig,
+      building: {
+        ...fullConfig.building,
+        sharedInfos: nextSharedInfos,
+        sharedAreas,
+        sharedImportedGroupAddresses: nextSharedGroupAddressBook,
+        sharedImportedGroupAddressesFileName: nextSharedGroupAddressFileName,
+      },
+      apartments: fullConfig.apartments.map((entry) => entry.id !== apartment.id ? entry : ({
+        ...entry,
+        floors: privateFloors,
+        areaOrder,
+        alarms: nextAlarms,
+        importedGroupAddresses: nextApartmentGroupAddressBook,
+        importedGroupAddressesFileName: nextApartmentGroupAddressFileName,
+      })),
+    };
+  };
+
+  const persistConfig = async (nextConfig) => {
+    const result = await updateConfig(nextConfig);
+    if (result?.config) applyConfig?.(result.config);
+    else await fetchConfig();
+  };
+
+  const handleAddFloor = (name, scope = 'apartment') => {
+    const newFloor = { id: `floor_${Date.now()}`, name, rooms: [], isShared: scope === 'shared' };
     const updated = [...floors, newFloor];
     setFloors(updated);
     setActiveFloorId(newFloor.id);
@@ -245,18 +300,27 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
 
   // ── Save ─────────────────────────────────────────────────
   const saveFloors = async (f = floors) => {
-    await updateConfig({ floors: f });
-    await fetchConfig(); // awaited so App.jsx config is fresh before any navigation
+    await persistConfig(buildNextConfig({ nextFloors: f }));
   };
 
-  const saveGlobals = async (g = globals) => {
-    setGlobals(g);
+  const saveSharedInfos = async (nextInfos = sharedInfos) => {
+    setSharedInfos(nextInfos);
     try {
-      await updateConfig({ globals: g });
-      await fetchConfig();
+      await persistConfig(buildNextConfig({ nextSharedInfos: nextInfos }));
       return true;
     } catch {
-      addToast('Failed to save globals', 'error');
+      addToast('Failed to save shared information', 'error');
+      return false;
+    }
+  };
+
+  const saveAlarms = async (nextAlarms = alarms) => {
+    setAlarms(nextAlarms);
+    try {
+      await persistConfig(buildNextConfig({ nextAlarms }));
+      return true;
+    } catch {
+      addToast('Failed to save apartment alarms', 'error');
       return false;
     }
   };
@@ -304,9 +368,11 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
 
   // ── Hue: Lamp modal ──────────────────────────────────────
   const openHueLampModal = async (roomId, floorId) => {
-    setHueLampModal({ open: true, roomId, floorId }); setHueLampsLoading(true);
+    const floor = floors.find((entry) => entry.id === floorId);
+    const scope = floor?.isShared ? 'shared' : 'apartment';
+    setHueLampModal({ open: true, roomId, floorId, scope }); setHueLampsLoading(true);
     try {
-      const res = await getHueLights();
+      const res = await getHueLights({ apartmentId: apartment.id, scope });
       if (res.success) setHueLamps(res.lights);
       else addToast('Failed to load Hue lights: ' + (res.error || ''), 'error');
     } catch { addToast('Could not reach Hue Bridge', 'error'); }
@@ -324,9 +390,11 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
 
   // ── Hue: Room modal ──────────────────────────────────────
   const openHueRoomModal = async (roomId, floorId) => {
-    setHueRoomModal({ open: true, roomId, floorId }); setHueRoomsLoading(true);
+    const floor = floors.find((entry) => entry.id === floorId);
+    const scope = floor?.isShared ? 'shared' : 'apartment';
+    setHueRoomModal({ open: true, roomId, floorId, scope }); setHueRoomsLoading(true);
     try {
-      const res = await getHueRooms();
+      const res = await getHueRooms({ apartmentId: apartment.id, scope });
       if (res.success) setHueRooms(res.rooms);
       else addToast('Failed to load Hue rooms: ' + (res.error || ''), 'error');
     } catch { addToast('Could not reach Hue Bridge', 'error'); }
@@ -334,9 +402,9 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
   };
 
   const selectHueRoom = async (hueRoom) => {
-    const { roomId, floorId } = hueRoomModal;
+    const { roomId, floorId, scope = 'apartment' } = hueRoomModal;
     try {
-      const res = await linkHueRoom(roomId, hueRoom.id);
+      const res = await linkHueRoom(roomId, hueRoom.id, { apartmentId: apartment.id, scope });
       if (res.success) {
         updateRoom(floorId, roomId, { hueRoomId: hueRoom.id, hueRoomName: hueRoom.name });
         addToast(`Linked Hue room "${hueRoom.name}"`, 'success'); fetchConfig();
@@ -346,8 +414,10 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
   };
 
   const handleUnlinkHueRoom = async (roomId, floorId) => {
+    const floor = floors.find((entry) => entry.id === floorId);
+    const scope = floor?.isShared ? 'shared' : 'apartment';
     try {
-      await unlinkHueRoom(roomId);
+      await unlinkHueRoom(roomId, { apartmentId: apartment.id, scope });
       updateRoom(floorId, roomId, { hueRoomId: null, hueRoomName: null });
       addToast('Hue room unlinked', 'success'); fetchConfig();
     } catch { addToast('Unlink failed', 'error'); }
@@ -355,10 +425,12 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
 
   // ── Hue: Scene modal ─────────────────────────────────────
   const openHueSceneModal = async (roomId, sceneId) => {
-    setHueSceneModal({ open: true, roomId, sceneId }); setHueScenesLoading(true);
+    const floor = floors.find((entry) => entry.rooms.some((room) => room.id === roomId));
+    const scope = floor?.isShared ? 'shared' : 'apartment';
+    setHueSceneModal({ open: true, roomId, sceneId, scope }); setHueScenesLoading(true);
     try {
       await saveFloors();
-      const res = await getHueScenes();
+      const res = await getHueScenes({ apartmentId: apartment.id, scope });
       if (res.success) setHueScenes(res.scenes);
       else addToast('Failed to load Hue scenes: ' + (res.error || ''), 'error');
     } catch { addToast('Could not reach Hue Bridge', 'error'); }
@@ -366,9 +438,9 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
   };
 
   const selectHueScene = async (hueScene) => {
-    const { roomId, sceneId } = hueSceneModal;
+    const { roomId, sceneId, scope = 'apartment' } = hueSceneModal;
     try {
-      const res = await linkHueScene(sceneId, hueScene.id);
+      const res = await linkHueScene(sceneId, hueScene.id, { apartmentId: apartment.id, scope });
       if (res.success) {
         for (const f of floors) {
           const room = f.rooms.find(r => r.id === roomId);
@@ -384,8 +456,10 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
   };
 
   const handleUnlinkHueScene = async (roomId, sceneId) => {
+    const floor = floors.find((entry) => entry.rooms.some((room) => room.id === roomId));
+    const scope = floor?.isShared ? 'shared' : 'apartment';
     try {
-      await unlinkHueScene(sceneId);
+      await unlinkHueScene(sceneId, { apartmentId: apartment.id, scope });
       for (const f of floors) {
         const room = f.rooms.find(r => r.id === roomId);
         if (room) {
@@ -399,31 +473,93 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
 
   // ── GA modal ─────────────────────────────────────────────
   const openGroupAddressModal = (options) => {
-    setGroupAddressModal({ open: true, roomId: options.roomId || null, floorId: options.floorId || null, title: options.title || 'Select Group Address', mode: options.mode || 'any', dptFilter: options.dptFilter || null, target: options.target || null, allowUpload: !!options.allowUpload, helperText: options.helperText || '' });
+    const floorScope = options.floorId
+      ? (floors.find((floor) => floor.id === options.floorId)?.isShared ? 'shared' : 'apartment')
+      : (activeFloor?.isShared ? 'shared' : 'apartment');
+    setGroupAddressModal({
+      open: true,
+      roomId: options.roomId || null,
+      floorId: options.floorId || null,
+      title: options.title || 'Select Group Address',
+      mode: options.mode || 'any',
+      dptFilter: options.dptFilter || null,
+      target: options.target || null,
+      allowUpload: !!options.allowUpload,
+      helperText: options.helperText || '',
+      scope: options.scope || floorScope
+    });
   };
-  const closeGroupAddressModal = () => setGroupAddressModal({ open: false, roomId: null, floorId: null, title: '', mode: 'any', dptFilter: null, target: null, allowUpload: false, helperText: '' });
+  const closeGroupAddressModal = () => setGroupAddressModal({
+    open: false,
+    roomId: null,
+    floorId: null,
+    title: '',
+    mode: 'any',
+    dptFilter: null,
+    target: null,
+    allowUpload: false,
+    helperText: '',
+    scope: 'apartment'
+  });
 
   const importGroupAddresses = async (addresses, fileName) => {
     try {
-      await updateConfig({ importedGroupAddresses: addresses, importedGroupAddressesFileName: fileName });
-      setGroupAddressBook(addresses); setGroupAddressFileName(fileName);
+      if (groupAddressModal.scope === 'shared') {
+        setSharedGroupAddressBook(addresses);
+        setSharedGroupAddressFileName(fileName);
+        await persistConfig(buildNextConfig({
+          nextSharedGroupAddressBook: addresses,
+          nextSharedGroupAddressFileName: fileName,
+        }));
+      } else {
+        setApartmentGroupAddressBook(addresses);
+        setApartmentGroupAddressFileName(fileName);
+        await persistConfig(buildNextConfig({
+          nextApartmentGroupAddressBook: addresses,
+          nextApartmentGroupAddressFileName: fileName,
+        }));
+      }
       addToast(`Imported ${addresses.length} group addresses`, 'success'); fetchConfig();
     } catch { addToast('Failed to persist imported group addresses', 'error'); }
   };
   const clearGroupAddresses = async () => {
     try {
-      await updateConfig({ importedGroupAddresses: [], importedGroupAddressesFileName: '' });
-      setGroupAddressBook([]); setGroupAddressFileName('');
+      if (groupAddressModal.scope === 'shared') {
+        setSharedGroupAddressBook([]);
+        setSharedGroupAddressFileName('');
+        await persistConfig(buildNextConfig({
+          nextSharedGroupAddressBook: [],
+          nextSharedGroupAddressFileName: '',
+        }));
+      } else {
+        setApartmentGroupAddressBook([]);
+        setApartmentGroupAddressFileName('');
+        await persistConfig(buildNextConfig({
+          nextApartmentGroupAddressBook: [],
+          nextApartmentGroupAddressFileName: '',
+        }));
+      }
       addToast('Imported group addresses cleared', 'success'); fetchConfig();
     } catch { addToast('Failed to clear imported group addresses', 'error'); }
   };
 
   const handleSelectGroupAddress = async (groupAddress) => {
     const { roomId, floorId, target } = groupAddressModal;
-    if (target?.kind === 'global') {
-      const updatedGlobals = globals.map(g => g.id === target.id ? { ...g, statusGroupAddress: groupAddress.address, dpt: groupAddress.dpt || '' } : g);
-      const saved = await saveGlobals(updatedGlobals);
-      if (saved) addToast(`Selected global GA "${groupAddress.name}"`, 'success');
+    if (target?.kind === 'sharedInfo') {
+      const updatedInfos = sharedInfos.map((info) => info.id === target.id
+        ? { ...info, statusGroupAddress: groupAddress.address, dpt: groupAddress.dpt || '' }
+        : info);
+      const saved = await saveSharedInfos(updatedInfos);
+      if (saved) addToast(`Selected shared GA "${groupAddress.name}"`, 'success');
+      closeGroupAddressModal();
+      return;
+    }
+    if (target?.kind === 'alarm') {
+      const updatedAlarms = alarms.map((alarm) => alarm.id === target.id
+        ? { ...alarm, statusGroupAddress: groupAddress.address, dpt: groupAddress.dpt || '' }
+        : alarm);
+      const saved = await saveAlarms(updatedAlarms);
+      if (saved) addToast(`Selected alarm GA "${groupAddress.name}"`, 'success');
       closeGroupAddressModal();
       return;
     }
@@ -460,18 +596,28 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
       {/* Header bar that holds either FloorTabs or Title, and the Globals toggle button */}
       <div className="settings-floors-header">
         {activeTab === 'rooms' ? (
-          <FloorTabs
-            floors={floors}
-            activeFloorId={activeFloor?.id}
-            onSelectFloor={setActiveFloorId}
-            onReorderFloors={handleReorderFloors}
-            onAddFloor={handleAddFloor}
-            onDeleteFloor={handleDeleteFloor}
-            onRenameFloor={handleRenameFloor}
-          />
+          <>
+            <FloorTabs
+              floors={floors}
+              activeFloorId={activeFloor?.id}
+              onSelectFloor={setActiveFloorId}
+              onReorderFloors={handleReorderFloors}
+              onDeleteFloor={handleDeleteFloor}
+              onRenameFloor={handleRenameFloor}
+              showAddButton={false}
+            />
+            <div className="settings-area-actions">
+              <button className="btn-secondary-sm" onClick={() => handleAddFloor(`Area ${floors.length + 1}`, 'apartment')}>
+                <Plus size={14} /> Add Private Area
+              </button>
+              <button className="btn-secondary-sm" onClick={() => handleAddFloor(`Shared Area ${floors.filter((floor) => floor.isShared).length + 1}`, 'shared')}>
+                <Plus size={14} /> Add Shared Area
+              </button>
+            </div>
+          </>
         ) : (
           <div style={{ padding: '1rem 1.5rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-            Global Information & Alarms
+            Shared Information & Apartment Alarms
           </div>
         )}
 
@@ -489,9 +635,12 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
       {activeTab === 'globals' ? (
         <div style={{ padding: '1.5rem' }}>
           <GlobalsConfig
-            globals={globals}
-            setGlobals={setGlobals}
-            saveGlobals={saveGlobals}
+            sharedInfos={sharedInfos}
+            apartmentAlarms={alarms}
+            setSharedInfos={setSharedInfos}
+            setApartmentAlarms={setAlarms}
+            saveSharedInfos={saveSharedInfos}
+            saveApartmentAlarms={saveAlarms}
             openGroupAddressModal={openGroupAddressModal}
           />
         </div>
@@ -544,7 +693,7 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
                   openHueRoomModal={openHueRoomModal}
                   openHueLampModal={openHueLampModal}
                   openGroupAddressModal={openGroupAddressModal}
-                  hueStatus={hueStatus}
+                  hueStatus={activeFloor?.isShared ? sharedHueStatus : hueStatus}
                   onFuncDragEnd={onFuncDragEnd}
                   onSceneDragEnd={onSceneDragEnd}
                   sensors={sensors}
@@ -659,8 +808,8 @@ export default function Settings({ config, fetchConfig, addToast, hueStatus, set
       <KNXGroupAddressModal
         isOpen={groupAddressModal.open}
         title={groupAddressModal.title}
-        addresses={groupAddressBook}
-        importedFileName={groupAddressFileName}
+        addresses={modalAddressBook}
+        importedFileName={modalAddressFileName}
         onClose={closeGroupAddressModal}
         onSelect={handleSelectGroupAddress}
         onImport={importGroupAddresses}
