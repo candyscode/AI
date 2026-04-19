@@ -7,6 +7,18 @@ const fs = require('fs');
 const path = require('path');
 const KnxService = require('./knxService');
 const HueService = require('./hueService');
+const {
+  getAllApartmentRooms,
+  getAllSharedRooms,
+  getApartmentById,
+  getSharedAccessApartment,
+  normalizeArea,
+  normalizeConfigShape,
+  normalizeImportedGroupAddresses,
+  normalizeAlarm,
+  normalizeSharedInfo,
+  slugifyApartmentName,
+} = require('./configModel');
 
 const app = express();
 const server = http.createServer(app);
@@ -18,342 +30,747 @@ app.use(cors());
 app.use(bodyParser.json());
 
 const CONFIG_FILE = path.join(__dirname, 'config.json');
+const apartmentContexts = new Map();
 
-const knxService = new KnxService(io);
-const hueService = new HueService();
+let config = normalizeConfigShape({});
 
-// Default empty config
-let config = {
-  knxIp: '',
-  knxPort: 3671,
-  hue: { bridgeIp: '', apiKey: '' },
-  rooms: [],
-  floors: [],
-  globals: [],
-  importedGroupAddresses: [],
-  importedGroupAddressesFileName: ''
-};
-
-function normalizeImportedGroupAddresses(addresses) {
-  if (!Array.isArray(addresses)) return [];
-  return addresses
-    .filter((entry) => entry && typeof entry === 'object')
-    .map((entry) => ({
-      address: typeof entry.address === 'string' ? entry.address : '',
-      name: typeof entry.name === 'string' ? entry.name : '',
-      dpt: typeof entry.dpt === 'string' ? entry.dpt : '',
-      functionType: typeof entry.functionType === 'string' ? entry.functionType : '',
-      supported: entry.supported !== false,
-    }))
-    .filter((entry) => entry.address && entry.name);
-}
-
-function normalizeConfigShape(input) {
-  if (!input || typeof input !== 'object') return;
-  if (!input.knxPort) input.knxPort = 3671;
-  if (!input.hue) input.hue = { bridgeIp: '', apiKey: '' };
-  if (!Array.isArray(input.rooms)) input.rooms = [];
-  if (!Array.isArray(input.floors)) input.floors = [];
-  if (!Array.isArray(input.globals)) input.globals = [];
-  input.importedGroupAddresses = normalizeImportedGroupAddresses(input.importedGroupAddresses);
-  input.importedGroupAddressesFileName = typeof input.importedGroupAddressesFileName === 'string'
-    ? input.importedGroupAddressesFileName
-    : '';
-}
-
-/** Returns a flat list of all rooms, whether stored under floors[] or legacy rooms[] */
-function allRooms() {
-  if (config.floors && config.floors.length > 0) {
-    return config.floors.flatMap(f => f.rooms || []);
-  }
-  return config.rooms || [];
-}
-
-function buildKnxTrackingMaps() {
-  const statusGAs = new Set();
-  const gaToType = {};
-  const gaToDpt = {};
-
-  if (Array.isArray(config.globals)) {
-    config.globals.forEach(g => {
-      if (!g?.statusGroupAddress) return;
-      statusGAs.add(g.statusGroupAddress);
-      gaToType[g.statusGroupAddress] = g.type === 'alarm' ? 'alarm' : 'info';
-      if (g.dpt) gaToDpt[g.statusGroupAddress] = g.dpt;
-    });
+function loadConfig() {
+  if (!fs.existsSync(CONFIG_FILE)) {
+    saveConfig();
+    return;
   }
 
-  allRooms().forEach(room => {
-    if (room.roomTemperatureGroupAddress) {
-      statusGAs.add(room.roomTemperatureGroupAddress);
-      gaToType[room.roomTemperatureGroupAddress] = 'info';
-      gaToDpt[room.roomTemperatureGroupAddress] = 'DPT9.001';
-    }
-
-    if (!room.functions) return;
-    room.functions.forEach(func => {
-      if (func.statusGroupAddress) {
-        statusGAs.add(func.statusGroupAddress);
-        gaToType[func.statusGroupAddress] = func.type;
-      }
-      if (func.groupAddress) {
-        gaToType[func.groupAddress] = func.type;
-      }
-      if (func.movingGroupAddress) {
-        gaToType[func.movingGroupAddress] = 'moving';
-      }
-    });
-
-    if (room.sceneGroupAddress) {
-      gaToType[room.sceneGroupAddress] = 'scene';
-    }
-  });
-
-  return { statusGAs, gaToType, gaToDpt };
-}
-
-function refreshKnxSubscriptions({ requestReads = false } = {}) {
-  const { statusGAs, gaToType, gaToDpt } = buildKnxTrackingMaps();
-  knxService.setGaToType(gaToType);
-  knxService.setGaToDpt(gaToDpt);
-  knxService.setSceneTriggerCallback(handleExternalSceneTrigger);
-
-  if (!requestReads || !knxService.isConnected) return;
-
-  let delay = 0;
-  statusGAs.forEach(ga => {
-    setTimeout(() => knxService.readStatus(ga), delay);
-    delay += 50;
-  });
-}
-
-function establishConnection() {
-  if (config.knxIp) {
-    knxService.connect(config.knxIp, config.knxPort, () => {
-      console.log('Orchestrating read requests for status GAs...');
-      refreshKnxSubscriptions({ requestReads: true });
-    });
-  }
-}
-
-/**
- * Called by KnxService when an external scene telegram is received on the bus
- * (e.g. from a wall-mounted switch).
- */
-async function handleExternalSceneTrigger(groupAddress, sceneNumber) {
-  console.log(`External scene trigger: GA=${groupAddress} scene=${sceneNumber}`);
-  await triggerLinkedHueScene(groupAddress, sceneNumber);
-}
-
-// Load config
-if (fs.existsSync(CONFIG_FILE)) {
   try {
     const data = fs.readFileSync(CONFIG_FILE, 'utf8');
-    config = JSON.parse(data);
-    normalizeConfigShape(config);
-    hueService.init(config.hue);
-    establishConnection();
-  } catch(e) {
-    console.error('Error parsing config.json', e);
+    config = normalizeConfigShape(JSON.parse(data));
+  } catch (error) {
+    console.error('Error parsing config.json', error);
+    config = normalizeConfigShape({});
   }
 }
 
 function saveConfig() {
-  normalizeConfigShape(config);
+  config = normalizeConfigShape(config);
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
 }
 
-// Ensure the local file exists right away
-if (!fs.existsSync(CONFIG_FILE)) {
-  saveConfig();
+function createApartmentEmitter(apartmentId) {
+  return {
+    emit(event, data) {
+      const context = apartmentContexts.get(apartmentId);
+      const scopeForGa = (groupAddress) => {
+        if (context?.tracking?.sharedGaSet?.has(groupAddress)) return 'shared';
+        return 'apartment';
+      };
+
+      if (event === 'knx_status') {
+        io.emit('knx_status', { ...data, apartmentId, scope: 'apartment' });
+        if (config.building.sharedAccessApartmentId === apartmentId) {
+          io.emit('knx_status', { ...data, apartmentId, scope: 'shared' });
+        }
+        return;
+      }
+
+      if (event === 'knx_error') {
+        io.emit('knx_error', { ...data, apartmentId, scope: 'apartment' });
+        if (config.building.sharedAccessApartmentId === apartmentId) {
+          io.emit('knx_error', { ...data, apartmentId, scope: 'shared' });
+        }
+        return;
+      }
+
+      if (event === 'knx_state_update') {
+        io.emit('knx_state_update', {
+          ...data,
+          apartmentId,
+          scope: scopeForGa(data.groupAddress),
+        });
+        return;
+      }
+
+      io.emit(event, { ...data, apartmentId });
+    },
+  };
 }
 
-// API Routes
-app.get('/api/config', (req, res) => {
-  res.json(config);
-});
+function ensureApartmentContext(apartmentId) {
+  if (apartmentContexts.has(apartmentId)) return apartmentContexts.get(apartmentId);
 
-app.post('/api/config', (req, res) => {
-  const { knxIp, knxPort, rooms, floors, globals, importedGroupAddresses, importedGroupAddressesFileName } = req.body;
-  
-  let shouldReconnect = false;
-  let shouldRefreshSubscriptions = false;
+  const context = {
+    apartmentId,
+    knxService: new KnxService(createApartmentEmitter(apartmentId)),
+    hueService: new HueService(),
+    huePollingInterval: null,
+    tracking: {
+      gaToType: {},
+      gaToDpt: {},
+      apartmentGaSet: new Set(),
+      sharedGaSet: new Set(),
+      statusGAs: new Set(),
+    },
+  };
 
-  if (knxIp !== undefined && config.knxIp !== knxIp) {
-    config.knxIp = knxIp;
-    shouldReconnect = true;
-  }
-  
-  if (knxPort !== undefined && config.knxPort !== parseInt(knxPort)) {
-    config.knxPort = parseInt(knxPort) || 3671;
-    shouldReconnect = true;
-  }
-  
-  // Support both legacy rooms[] and new floors[]
-  if (floors !== undefined) {
-    config.floors = floors;
-    // Keep legacy rooms[] in sync for backwards compatibility
-    config.rooms = floors.flatMap(f => f.rooms || []);
-    shouldRefreshSubscriptions = true;
-  } else if (rooms !== undefined) {
-    config.rooms = rooms;
-    shouldRefreshSubscriptions = true;
-  }
+  apartmentContexts.set(apartmentId, context);
+  return context;
+}
 
-  if (globals !== undefined) {
-    config.globals = Array.isArray(globals) ? globals : [];
-    shouldRefreshSubscriptions = true;
-  }
+function syncApartmentContexts() {
+  const nextApartmentIds = new Set(config.apartments.map((apartment) => apartment.id));
 
-  if (importedGroupAddresses !== undefined) {
-    config.importedGroupAddresses = normalizeImportedGroupAddresses(importedGroupAddresses);
-  }
+  config.apartments.forEach((apartment) => {
+    const context = ensureApartmentContext(apartment.id);
+    context.hueService.init(apartment.hue);
+  });
 
-  if (importedGroupAddressesFileName !== undefined) {
-    config.importedGroupAddressesFileName = typeof importedGroupAddressesFileName === 'string'
-      ? importedGroupAddressesFileName
-      : '';
-  }
-  
-  saveConfig();
+  for (const [apartmentId, context] of apartmentContexts.entries()) {
+    if (nextApartmentIds.has(apartmentId)) continue;
 
-  if (shouldReconnect && config.knxIp) {
-    establishConnection();
-  } else if (shouldRefreshSubscriptions) {
-    refreshKnxSubscriptions({ requestReads: true });
-  }
-
-  res.json({ success: true, config });
-});
-
-// Load configuration from config.dev.json
-app.post('/api/dev/load-config', (req, res) => {
-  const DEV_CONFIG_FILE = path.join(__dirname, 'config.dev.json');
-  if (fs.existsSync(DEV_CONFIG_FILE)) {
+    stopHuePolling(apartmentId);
     try {
-      const data = fs.readFileSync(DEV_CONFIG_FILE, 'utf8');
-      config = JSON.parse(data);
-      saveConfig();
-      if (config.knxIp) {
-        establishConnection();
+      context.knxService.connect('', 3671);
+    } catch (error) {
+      console.error(`Failed to disconnect removed apartment ${apartmentId}:`, error.message);
+    }
+    apartmentContexts.delete(apartmentId);
+  }
+}
+
+function getRoomsForApartmentScope(apartmentId) {
+  const apartment = getApartmentById(config, apartmentId);
+  return apartment ? getAllApartmentRooms(apartment) : [];
+}
+
+function getRoomsForSharedScope() {
+  return getAllSharedRooms(config);
+}
+
+function getRoomsForHuePolling(apartmentId) {
+  const rooms = [...getRoomsForApartmentScope(apartmentId)];
+  if (config.building.sharedAccessApartmentId === apartmentId) {
+    rooms.push(...getRoomsForSharedScope());
+  }
+  return rooms;
+}
+
+function buildKnxTrackingMaps(apartmentId) {
+  const apartment = getApartmentById(config, apartmentId);
+  const sharedAccessApartment = getSharedAccessApartment(config);
+  const includeShared = sharedAccessApartment?.id === apartmentId;
+
+  const statusGAs = new Set();
+  const gaToType = {};
+  const gaToDpt = {};
+  const apartmentGaSet = new Set();
+  const sharedGaSet = new Set();
+
+  const registerRoomSet = (rooms, scope) => {
+    const scopedSet = scope === 'shared' ? sharedGaSet : apartmentGaSet;
+
+    rooms.forEach((room) => {
+      if (room.roomTemperatureGroupAddress) {
+        statusGAs.add(room.roomTemperatureGroupAddress);
+        gaToType[room.roomTemperatureGroupAddress] = 'info';
+        gaToDpt[room.roomTemperatureGroupAddress] = 'DPT9.001';
+        scopedSet.add(room.roomTemperatureGroupAddress);
       }
-      res.json({ success: true, config });
-    } catch (e) {
-      console.error('Error parsing config.dev.json', e);
-      res.status(500).json({ success: false, error: 'Internal Server Error reading dev config' });
-    }
-  } else {
-    res.status(404).json({ success: false, error: 'config.dev.json not found' });
+
+      (room.functions || []).forEach((func) => {
+        if (func.statusGroupAddress) {
+          statusGAs.add(func.statusGroupAddress);
+          gaToType[func.statusGroupAddress] = func.type;
+          scopedSet.add(func.statusGroupAddress);
+        }
+        if (func.groupAddress) {
+          gaToType[func.groupAddress] = func.type;
+          scopedSet.add(func.groupAddress);
+        }
+        if (func.movingGroupAddress) {
+          gaToType[func.movingGroupAddress] = 'moving';
+          scopedSet.add(func.movingGroupAddress);
+        }
+      });
+
+      if (room.sceneGroupAddress) {
+        gaToType[room.sceneGroupAddress] = 'scene';
+        scopedSet.add(room.sceneGroupAddress);
+      }
+    });
+  };
+
+  registerRoomSet(apartment ? getAllApartmentRooms(apartment) : [], 'apartment');
+
+  (apartment?.alarms || []).forEach((alarm) => {
+    if (!alarm?.statusGroupAddress) return;
+    statusGAs.add(alarm.statusGroupAddress);
+    gaToType[alarm.statusGroupAddress] = 'alarm';
+    gaToDpt[alarm.statusGroupAddress] = alarm.dpt || 'DPT1.001';
+    apartmentGaSet.add(alarm.statusGroupAddress);
+  });
+
+  if (includeShared) {
+    (config.building.sharedInfos || []).forEach((info) => {
+      if (!info?.statusGroupAddress) return;
+      statusGAs.add(info.statusGroupAddress);
+      gaToType[info.statusGroupAddress] = 'info';
+      if (info.dpt) gaToDpt[info.statusGroupAddress] = info.dpt;
+      sharedGaSet.add(info.statusGroupAddress);
+    });
+
+    registerRoomSet(getRoomsForSharedScope(), 'shared');
   }
-});
 
-// Action trigger
-app.post('/api/action', async (req, res) => {
-  const { groupAddress, type, sceneNumber, value } = req.body;
-  
-  try {
-    if (type === 'scene') {
-      knxService.writeScene(groupAddress, sceneNumber);
-      // Trigger linked Hue scene if configured
-      await triggerLinkedHueScene(groupAddress, sceneNumber);
-    } else if (type === 'percentage') {
-      // 0-100% -> 'DPT5.001'
-      knxService.writeGroupValue(groupAddress, value, 'DPT5.001');
-    } else {
-      // type === 'switch' or other mapped to boolean True/False 1-bit
-      knxService.writeGroupValue(groupAddress, (value === true || value === 1 || value === '1'), 'DPT1');
-    }
-    
-    res.json({ success: true, message: `Sent to bus` });
-  } catch (error) {
-    console.error("Failed to execute action:", error.message);
-    io.emit('knx_error', { msg: `Action failed on bus: ${error.message}` });
-    res.status(500).json({ success: false, error: error.message });
+  return { statusGAs, gaToType, gaToDpt, apartmentGaSet, sharedGaSet };
+}
+
+function refreshKnxSubscriptions(apartmentId, { requestReads = false } = {}) {
+  const context = apartmentContexts.get(apartmentId);
+  if (!context) return;
+
+  context.tracking = buildKnxTrackingMaps(apartmentId);
+  context.knxService.setGaToType(context.tracking.gaToType);
+  context.knxService.setGaToDpt(context.tracking.gaToDpt);
+  context.knxService.setSceneTriggerCallback((groupAddress, sceneNumber) => {
+    const scope = context.tracking.sharedGaSet.has(groupAddress) ? 'shared' : 'apartment';
+    handleExternalSceneTrigger(apartmentId, scope, groupAddress, sceneNumber);
+  });
+
+  if (!requestReads || !context.knxService.isConnected) return;
+
+  let delay = 0;
+  context.tracking.statusGAs.forEach((groupAddress) => {
+    setTimeout(() => context.knxService.readStatus(groupAddress), delay);
+    delay += 50;
+  });
+}
+
+function establishConnection(apartmentId) {
+  const apartment = getApartmentById(config, apartmentId);
+  const context = apartmentContexts.get(apartmentId);
+  if (!apartment || !context) return;
+
+  if (!apartment.knxIp) {
+    context.knxService.connect('', apartment.knxPort || 3671);
+    return;
   }
-});
 
-/**
- * Given a KNX scene group address and scene number, trigger the corresponding Hue scene (if any).
- * If the scene is named 'Aus' or 'Off', turn off the linked Hue room instead.
- */
-async function triggerLinkedHueScene(groupAddress, sceneNumber) {
-  if (!hueService.isPaired) return;
+  context.knxService.connect(apartment.knxIp, apartment.knxPort, () => {
+    refreshKnxSubscriptions(apartmentId, { requestReads: true });
+  });
+}
 
-  for (const room of allRooms()) {
+function stopHuePolling(apartmentId) {
+  const context = apartmentContexts.get(apartmentId);
+  if (!context?.huePollingInterval) return;
+
+  clearInterval(context.huePollingInterval);
+  context.huePollingInterval = null;
+}
+
+function startHuePolling(apartmentId) {
+  const context = apartmentContexts.get(apartmentId);
+  if (!context) return;
+
+  stopHuePolling(apartmentId);
+  if (!context.hueService.isPaired) return;
+
+  context.huePollingInterval = setInterval(async () => {
+    const privateHueIds = new Set();
+    const sharedHueIds = new Set();
+
+    getRoomsForApartmentScope(apartmentId).forEach((room) => {
+      (room.functions || []).forEach((func) => {
+        if (func.type === 'hue' && func.hueLightId) privateHueIds.add(func.hueLightId);
+      });
+    });
+
+    if (config.building.sharedAccessApartmentId === apartmentId) {
+      getRoomsForSharedScope().forEach((room) => {
+        (room.functions || []).forEach((func) => {
+          if (func.type === 'hue' && func.hueLightId) sharedHueIds.add(func.hueLightId);
+        });
+      });
+    }
+
+    const apartmentStates = await context.hueService.getLightStates([...privateHueIds]);
+    if (Object.keys(apartmentStates).length > 0) {
+      io.emit('hue_states', { apartmentId, scope: 'apartment', states: apartmentStates });
+    }
+
+    if (sharedHueIds.size > 0) {
+      const sharedStates = await context.hueService.getLightStates([...sharedHueIds]);
+      if (Object.keys(sharedStates).length > 0) {
+        io.emit('hue_states', { apartmentId, scope: 'shared', states: sharedStates });
+      }
+    }
+  }, 5000);
+}
+
+function getKnxStatusPayload(apartmentId, scope = 'apartment') {
+  const apartment = getApartmentById(config, apartmentId);
+  const context = apartmentContexts.get(apartmentId);
+  const hasKnxIp = !!apartment?.knxIp;
+  const connected = !!context?.knxService?.isConnected;
+
+  return {
+    apartmentId,
+    scope,
+    connected,
+    msg: connected ? 'Connected to bus' : (hasKnxIp ? 'Disconnected from bus' : 'No KNX IP Configured'),
+  };
+}
+
+function emitAllStatuses(socket) {
+  const emitter = socket || io;
+
+  config.apartments.forEach((apartment) => {
+    emitter.emit('knx_status', getKnxStatusPayload(apartment.id, 'apartment'));
+
+    const context = apartmentContexts.get(apartment.id);
+    emitter.emit('hue_status', {
+      apartmentId: apartment.id,
+      scope: 'apartment',
+      paired: !!context?.hueService?.isPaired,
+      bridgeIp: context?.hueService?.bridgeIp || '',
+    });
+  });
+
+  const sharedAccessApartment = getSharedAccessApartment(config);
+  if (sharedAccessApartment) {
+    const context = apartmentContexts.get(sharedAccessApartment.id);
+    emitter.emit('knx_status', getKnxStatusPayload(sharedAccessApartment.id, 'shared'));
+    emitter.emit('hue_status', {
+      apartmentId: sharedAccessApartment.id,
+      scope: 'shared',
+      paired: !!context?.hueService?.isPaired,
+      bridgeIp: context?.hueService?.bridgeIp || '',
+    });
+  }
+}
+
+function buildStateSnapshot() {
+  const apartments = {};
+
+  config.apartments.forEach((apartment) => {
+    const context = apartmentContexts.get(apartment.id);
+    const apartmentStates = {};
+
+    Object.entries(context?.knxService?.deviceStates || {}).forEach(([groupAddress, value]) => {
+      if (context?.tracking?.sharedGaSet?.has(groupAddress)) return;
+      apartmentStates[groupAddress] = value;
+    });
+
+    apartments[apartment.id] = apartmentStates;
+  });
+
+  const sharedStates = {};
+  const sharedAccessApartment = getSharedAccessApartment(config);
+  const sharedContext = sharedAccessApartment ? apartmentContexts.get(sharedAccessApartment.id) : null;
+  Object.entries(sharedContext?.knxService?.deviceStates || {}).forEach(([groupAddress, value]) => {
+    if (!sharedContext?.tracking?.sharedGaSet?.has(groupAddress)) return;
+    sharedStates[groupAddress] = value;
+  });
+
+  return { apartments, shared: sharedStates };
+}
+
+function applyConfigPatch(payload) {
+  if (!payload || typeof payload !== 'object') return;
+
+  if (Array.isArray(payload.apartments) || payload.building || payload.version === 2) {
+    config = normalizeConfigShape(payload);
+    return;
+  }
+
+  const apartmentId = payload.apartmentId || config.apartments[0]?.id;
+  const apartment = getApartmentById(config, apartmentId);
+  if (!apartment) return;
+
+  if (payload.scope === 'shared' || payload.target === 'building') {
+    if (payload.sharedInfos !== undefined) {
+      config.building.sharedInfos = Array.isArray(payload.sharedInfos)
+        ? payload.sharedInfos.map(normalizeSharedInfo).filter(Boolean)
+        : [];
+    }
+
+    if (payload.sharedAreas !== undefined || payload.floors !== undefined) {
+      const areas = payload.sharedAreas !== undefined ? payload.sharedAreas : payload.floors;
+      config.building.sharedAreas = Array.isArray(areas) ? areas.map(normalizeArea) : [];
+    }
+
+    if (payload.sharedImportedGroupAddresses !== undefined || payload.importedGroupAddresses !== undefined) {
+      config.building.sharedImportedGroupAddresses = normalizeImportedGroupAddresses(
+        payload.sharedImportedGroupAddresses !== undefined
+          ? payload.sharedImportedGroupAddresses
+          : payload.importedGroupAddresses
+      );
+    }
+
+    if (payload.sharedImportedGroupAddressesFileName !== undefined || payload.importedGroupAddressesFileName !== undefined) {
+      config.building.sharedImportedGroupAddressesFileName =
+        typeof (payload.sharedImportedGroupAddressesFileName !== undefined
+          ? payload.sharedImportedGroupAddressesFileName
+          : payload.importedGroupAddressesFileName) === 'string'
+          ? (payload.sharedImportedGroupAddressesFileName !== undefined
+            ? payload.sharedImportedGroupAddressesFileName
+            : payload.importedGroupAddressesFileName)
+          : '';
+    }
+
+    if (payload.sharedAccessApartmentId !== undefined && getApartmentById(config, payload.sharedAccessApartmentId)) {
+      config.building.sharedAccessApartmentId = payload.sharedAccessApartmentId;
+    }
+
+    return;
+  }
+
+  if (payload.name !== undefined && typeof payload.name === 'string' && payload.name.trim()) {
+    apartment.name = payload.name.trim();
+  }
+
+  if (payload.slug !== undefined && typeof payload.slug === 'string' && payload.slug.trim()) {
+    const usedSlugs = new Set(
+      config.apartments
+        .filter((entry) => entry.id !== apartment.id)
+        .map((entry) => entry.slug)
+    );
+    let slug = slugifyApartmentName(payload.slug.trim());
+    let suffix = 2;
+    while (usedSlugs.has(slug)) {
+      slug = `${slugifyApartmentName(payload.slug.trim())}-${suffix}`;
+      suffix += 1;
+    }
+    apartment.slug = slug;
+  }
+
+  if (payload.knxIp !== undefined) apartment.knxIp = payload.knxIp;
+  if (payload.knxPort !== undefined) apartment.knxPort = parseInt(payload.knxPort, 10) || 3671;
+  if (payload.hue !== undefined && payload.hue && typeof payload.hue === 'object') {
+    apartment.hue = {
+      bridgeIp: typeof payload.hue.bridgeIp === 'string' ? payload.hue.bridgeIp : '',
+      apiKey: typeof payload.hue.apiKey === 'string' ? payload.hue.apiKey : '',
+    };
+  }
+
+  if (payload.floors !== undefined) {
+    apartment.floors = Array.isArray(payload.floors) ? payload.floors.map(normalizeArea) : [];
+    apartment.areaOrder = apartment.floors.map((floor) => floor.id);
+  } else if (payload.rooms !== undefined) {
+    apartment.floors = [{
+      id: apartment.floors[0]?.id || 'area_default',
+      name: apartment.floors[0]?.name || 'Ground Floor',
+      rooms: Array.isArray(payload.rooms) ? payload.rooms : [],
+    }].map(normalizeArea);
+    apartment.areaOrder = apartment.floors.map((floor) => floor.id);
+  }
+
+  if (payload.areaOrder !== undefined) {
+    apartment.areaOrder = Array.isArray(payload.areaOrder)
+      ? payload.areaOrder.filter((entry) => typeof entry === 'string')
+      : [];
+  }
+
+  if (payload.alarms !== undefined) {
+    apartment.alarms = Array.isArray(payload.alarms)
+      ? payload.alarms.map(normalizeAlarm).filter(Boolean)
+      : [];
+  }
+
+  if (payload.globals !== undefined) {
+    apartment.alarms = Array.isArray(payload.globals)
+      ? payload.globals.filter((entry) => entry?.type === 'alarm').map(normalizeAlarm).filter(Boolean)
+      : [];
+    config.building.sharedInfos = Array.isArray(payload.globals)
+      ? payload.globals.filter((entry) => entry?.type !== 'alarm').map(normalizeSharedInfo).filter(Boolean)
+      : [];
+  }
+
+  if (payload.importedGroupAddresses !== undefined) {
+    apartment.importedGroupAddresses = normalizeImportedGroupAddresses(payload.importedGroupAddresses);
+  }
+
+  if (payload.importedGroupAddressesFileName !== undefined) {
+    apartment.importedGroupAddressesFileName =
+      typeof payload.importedGroupAddressesFileName === 'string'
+        ? payload.importedGroupAddressesFileName
+        : '';
+  }
+}
+
+function findRoom(roomId, apartmentId, scope = 'apartment') {
+  if (scope === 'shared') {
+    return getRoomsForSharedScope().find((room) => room.id === roomId) || null;
+  }
+
+  return getRoomsForApartmentScope(apartmentId).find((room) => room.id === roomId) || null;
+}
+
+function findScene(sceneId, apartmentId, scope = 'apartment') {
+  const rooms = scope === 'shared' ? getRoomsForSharedScope() : getRoomsForApartmentScope(apartmentId);
+  for (const room of rooms) {
+    const scene = (room.scenes || []).find((entry) => entry.id === sceneId);
+    if (scene) return scene;
+  }
+  return null;
+}
+
+function getActionContext(apartmentId, scope = 'apartment') {
+  if (scope === 'shared') {
+    const sharedAccessApartment = getSharedAccessApartment(config);
+    if (!sharedAccessApartment) return null;
+    return {
+      apartmentId: sharedAccessApartment.id,
+      scope: 'shared',
+      context: apartmentContexts.get(sharedAccessApartment.id),
+    };
+  }
+
+  const resolvedApartmentId = apartmentId || config.apartments[0]?.id;
+  return {
+    apartmentId: resolvedApartmentId,
+    scope: 'apartment',
+    context: apartmentContexts.get(resolvedApartmentId),
+  };
+}
+
+async function triggerLinkedHueScene(apartmentId, scope, groupAddress, sceneNumber) {
+  const actionContext = getActionContext(apartmentId, scope);
+  if (!actionContext?.context?.hueService?.isPaired) return;
+
+  const rooms = scope === 'shared' ? getRoomsForSharedScope() : getRoomsForApartmentScope(actionContext.apartmentId);
+
+  for (const room of rooms) {
     if (room.sceneGroupAddress !== groupAddress) continue;
 
-    const scene = (room.scenes || []).find(s => s.sceneNumber === sceneNumber && s.category !== 'shade');
+    const scene = (room.scenes || []).find(
+      (entry) => entry.sceneNumber === sceneNumber && entry.category !== 'shade'
+    );
     if (!scene) return;
 
     const isOff = scene.name && /^(aus|off)$/i.test(scene.name.trim());
-
     if (isOff && room.hueRoomId) {
-      console.log(`Turning off Hue room ${room.hueRoomId} for scene "${scene.name}"`);
-      await hueService.turnOffRoom(room.hueRoomId);
+      await actionContext.context.hueService.turnOffRoom(room.hueRoomId);
     } else if (scene.hueSceneId) {
-      console.log(`Triggering Hue scene ${scene.hueSceneId} for KNX scene "${scene.name}"`);
-      await hueService.triggerScene(scene.hueSceneId);
+      await actionContext.context.hueService.triggerScene(scene.hueSceneId);
     }
     return;
   }
 }
 
-// ══════ Hue API Routes ══════
+async function handleExternalSceneTrigger(apartmentId, scope, groupAddress, sceneNumber) {
+  await triggerLinkedHueScene(apartmentId, scope, groupAddress, sceneNumber);
+}
+
+loadConfig();
+syncApartmentContexts();
+config.apartments.forEach((apartment) => {
+  refreshKnxSubscriptions(apartment.id);
+  if (apartment.knxIp) establishConnection(apartment.id);
+  startHuePolling(apartment.id);
+});
+
+app.get('/api/config', (req, res) => {
+  res.json(config);
+});
+
+app.post('/api/config', (req, res) => {
+  const previousConfig = normalizeConfigShape(config);
+
+  applyConfigPatch(req.body);
+  config = normalizeConfigShape(config);
+  saveConfig();
+  syncApartmentContexts();
+
+  config.apartments.forEach((apartment) => {
+    const previousApartment = getApartmentById(previousConfig, apartment.id);
+    const knxChanged = !previousApartment
+      || previousApartment.knxIp !== apartment.knxIp
+      || previousApartment.knxPort !== apartment.knxPort;
+
+    if (knxChanged) establishConnection(apartment.id);
+    else refreshKnxSubscriptions(apartment.id, { requestReads: true });
+
+    startHuePolling(apartment.id);
+  });
+
+  emitAllStatuses();
+
+  res.json({ success: true, config });
+});
+
+app.post('/api/dev/load-config', (req, res) => {
+  const devConfigFile = path.join(__dirname, 'config.dev.json');
+  if (!fs.existsSync(devConfigFile)) {
+    res.status(404).json({ success: false, error: 'config.dev.json not found' });
+    return;
+  }
+
+  try {
+    const data = fs.readFileSync(devConfigFile, 'utf8');
+    config = normalizeConfigShape(JSON.parse(data));
+    saveConfig();
+    syncApartmentContexts();
+    config.apartments.forEach((apartment) => {
+      refreshKnxSubscriptions(apartment.id);
+      establishConnection(apartment.id);
+      startHuePolling(apartment.id);
+    });
+    emitAllStatuses();
+    res.json({ success: true, config });
+  } catch (error) {
+    console.error('Error parsing config.dev.json', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error reading dev config' });
+  }
+});
+
+app.post('/api/action', async (req, res) => {
+  const { apartmentId, scope = 'apartment', groupAddress, type, sceneNumber, value } = req.body;
+  const actionContext = getActionContext(apartmentId, scope);
+
+  if (!actionContext?.context?.knxService) {
+    res.status(400).json({ success: false, error: 'No KNX context available' });
+    return;
+  }
+
+  try {
+    if (type === 'scene') {
+      actionContext.context.knxService.writeScene(groupAddress, sceneNumber);
+      await triggerLinkedHueScene(actionContext.apartmentId, scope, groupAddress, sceneNumber);
+    } else if (type === 'percentage') {
+      actionContext.context.knxService.writeGroupValue(groupAddress, value, 'DPT5.001');
+    } else {
+      actionContext.context.knxService.writeGroupValue(
+        groupAddress,
+        value === true || value === 1 || value === '1',
+        'DPT1'
+      );
+    }
+
+    res.json({ success: true, message: 'Sent to bus' });
+  } catch (error) {
+    console.error('Failed to execute action:', error.message);
+    io.emit('knx_error', {
+      apartmentId: actionContext.apartmentId,
+      scope,
+      msg: `Action failed on bus: ${error.message}`,
+    });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 app.post('/api/hue/discover', async (req, res) => {
+  const apartmentId = req.body?.apartmentId || req.query?.apartmentId || config.apartments[0]?.id;
+  const context = apartmentContexts.get(apartmentId);
+  if (!context) {
+    res.status(404).json({ success: false, error: 'Apartment not found' });
+    return;
+  }
+
   try {
-    const bridges = await hueService.discoverBridges();
+    const bridges = await context.hueService.discoverBridges();
     res.json({ success: true, bridges });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 app.post('/api/hue/pair', async (req, res) => {
-  const { bridgeIp } = req.body;
-  if (!bridgeIp) return res.status(400).json({ success: false, error: 'bridgeIp required' });
+  const { apartmentId, bridgeIp } = req.body;
+  const apartment = getApartmentById(config, apartmentId || config.apartments[0]?.id);
+  const context = apartment ? apartmentContexts.get(apartment.id) : null;
 
-  const result = await hueService.pairBridge(bridgeIp);
+  if (!apartment || !context) {
+    res.status(404).json({ success: false, error: 'Apartment not found' });
+    return;
+  }
+
+  if (!bridgeIp) {
+    res.status(400).json({ success: false, error: 'bridgeIp required' });
+    return;
+  }
+
+  const result = await context.hueService.pairBridge(bridgeIp);
   if (result.success) {
-    config.hue = { bridgeIp, apiKey: result.apiKey };
+    apartment.hue = { bridgeIp, apiKey: result.apiKey };
     saveConfig();
-    startHuePolling();
+    startHuePolling(apartment.id);
+    io.emit('hue_status', { apartmentId: apartment.id, scope: 'apartment', paired: true, bridgeIp });
+    if (config.building.sharedAccessApartmentId === apartment.id) {
+      io.emit('hue_status', { apartmentId: apartment.id, scope: 'shared', paired: true, bridgeIp });
+    }
   }
   res.json(result);
 });
 
 app.post('/api/hue/unpair', (req, res) => {
-  hueService.unpair();
-  config.hue = { bridgeIp: '', apiKey: '' };
+  const apartmentId = req.body?.apartmentId || config.apartments[0]?.id;
+  const apartment = getApartmentById(config, apartmentId);
+  const context = apartment ? apartmentContexts.get(apartment.id) : null;
+  if (!apartment || !context) {
+    res.status(404).json({ success: false, error: 'Apartment not found' });
+    return;
+  }
+
+  context.hueService.unpair();
+  apartment.hue = { bridgeIp: '', apiKey: '' };
   saveConfig();
-  stopHuePolling();
+  stopHuePolling(apartment.id);
+  io.emit('hue_status', { apartmentId: apartment.id, scope: 'apartment', paired: false, bridgeIp: '' });
+  if (config.building.sharedAccessApartmentId === apartment.id) {
+    io.emit('hue_status', { apartmentId: apartment.id, scope: 'shared', paired: false, bridgeIp: '' });
+  }
   res.json({ success: true });
 });
 
+function resolveHueContext(req) {
+  const scope = req.query.scope || req.body?.scope || 'apartment';
+  const apartmentId = req.query.apartmentId || req.body?.apartmentId || config.apartments[0]?.id;
+  return getActionContext(apartmentId, scope);
+}
+
 app.get('/api/hue/lights', async (req, res) => {
-  const result = await hueService.getLights();
+  const actionContext = resolveHueContext(req);
+  if (!actionContext?.context) {
+    res.status(404).json({ success: false, error: 'Apartment not found', lights: [] });
+    return;
+  }
+  const result = await actionContext.context.hueService.getLights();
   res.json(result);
 });
 
 app.get('/api/hue/rooms', async (req, res) => {
-  const result = await hueService.getRooms();
+  const actionContext = resolveHueContext(req);
+  if (!actionContext?.context) {
+    res.status(404).json({ success: false, error: 'Apartment not found', rooms: [] });
+    return;
+  }
+  const result = await actionContext.context.hueService.getRooms();
   res.json(result);
 });
 
 app.get('/api/hue/scenes', async (req, res) => {
-  const result = await hueService.getScenes();
+  const actionContext = resolveHueContext(req);
+  if (!actionContext?.context) {
+    res.status(404).json({ success: false, error: 'Apartment not found', scenes: [] });
+    return;
+  }
+  const result = await actionContext.context.hueService.getScenes();
   res.json(result);
 });
 
-// ── Hue room/scene linking ──
-
 app.post('/api/config/rooms/:roomId/hue-room', (req, res) => {
-  const { roomId } = req.params;
+  const apartmentId = req.body.apartmentId || config.apartments[0]?.id;
+  const scope = req.body.scope || 'apartment';
   const { hueRoomId } = req.body;
-  if (!hueRoomId) return res.status(400).json({ success: false, error: 'hueRoomId required' });
+  if (!hueRoomId) {
+    res.status(400).json({ success: false, error: 'hueRoomId required' });
+    return;
+  }
 
-  const room = allRooms().find(r => r.id === roomId);
-  if (!room) return res.status(404).json({ success: false, error: 'Room not found' });
+  const room = findRoom(req.params.roomId, apartmentId, scope);
+  if (!room) {
+    res.status(404).json({ success: false, error: 'Room not found' });
+    return;
+  }
 
   room.hueRoomId = hueRoomId;
   saveConfig();
@@ -361,123 +778,91 @@ app.post('/api/config/rooms/:roomId/hue-room', (req, res) => {
 });
 
 app.delete('/api/config/rooms/:roomId/hue-room', (req, res) => {
-  const { roomId } = req.params;
-  const room = allRooms().find(r => r.id === roomId);
-  if (!room) return res.status(404).json({ success: false, error: 'Room not found' });
+  const apartmentId = req.query.apartmentId || config.apartments[0]?.id;
+  const scope = req.query.scope || 'apartment';
+  const room = findRoom(req.params.roomId, apartmentId, scope);
+  if (!room) {
+    res.status(404).json({ success: false, error: 'Room not found' });
+    return;
+  }
 
   delete room.hueRoomId;
+  delete room.hueRoomName;
   saveConfig();
   res.json({ success: true });
 });
 
 app.post('/api/config/scenes/:sceneId/hue-scene', (req, res) => {
-  const { sceneId } = req.params;
+  const apartmentId = req.body.apartmentId || config.apartments[0]?.id;
+  const scope = req.body.scope || 'apartment';
   const { hueSceneId } = req.body;
-  if (!hueSceneId) return res.status(400).json({ success: false, error: 'hueSceneId required' });
-
-  let found = false;
-  for (const room of allRooms()) {
-    const scene = (room.scenes || []).find(s => s.id === sceneId);
-    if (scene) {
-      scene.hueSceneId = hueSceneId;
-      found = true;
-      break;
-    }
+  if (!hueSceneId) {
+    res.status(400).json({ success: false, error: 'hueSceneId required' });
+    return;
   }
 
-  if (!found) return res.status(404).json({ success: false, error: 'Scene not found' });
+  const scene = findScene(req.params.sceneId, apartmentId, scope);
+  if (!scene) {
+    res.status(404).json({ success: false, error: 'Scene not found' });
+    return;
+  }
+
+  scene.hueSceneId = hueSceneId;
   saveConfig();
   res.json({ success: true });
 });
 
 app.delete('/api/config/scenes/:sceneId/hue-scene', (req, res) => {
-  const { sceneId } = req.params;
-
-  let found = false;
-  for (const room of allRooms()) {
-    const scene = (room.scenes || []).find(s => s.id === sceneId);
-    if (scene) {
-      delete scene.hueSceneId;
-      found = true;
-      break;
-    }
+  const apartmentId = req.query.apartmentId || config.apartments[0]?.id;
+  const scope = req.query.scope || 'apartment';
+  const scene = findScene(req.params.sceneId, apartmentId, scope);
+  if (!scene) {
+    res.status(404).json({ success: false, error: 'Scene not found' });
+    return;
   }
 
-  if (!found) return res.status(404).json({ success: false, error: 'Scene not found' });
+  delete scene.hueSceneId;
+  delete scene.hueSceneName;
   saveConfig();
   res.json({ success: true });
 });
 
 app.post('/api/hue/action', async (req, res) => {
-  const { lightId, on } = req.body;
-  if (!lightId) return res.status(400).json({ success: false, error: 'lightId required' });
+  const { apartmentId, scope = 'apartment', lightId, on } = req.body;
+  const actionContext = getActionContext(apartmentId, scope);
 
-  const result = await hueService.setLightState(lightId, on);
+  if (!lightId) {
+    res.status(400).json({ success: false, error: 'lightId required' });
+    return;
+  }
+
+  if (!actionContext?.context) {
+    res.status(404).json({ success: false, error: 'Apartment not found' });
+    return;
+  }
+
+  const result = await actionContext.context.hueService.setLightState(lightId, on);
   if (result.success) {
-    // Immediately broadcast the state change to all connected clients
-    io.emit('hue_state_update', { lightId: `hue_${lightId}`, on: !!on });
+    io.emit('hue_state_update', {
+      apartmentId: actionContext.apartmentId,
+      scope,
+      lightId: `hue_${lightId}`,
+      on: !!on,
+    });
   }
   res.json(result);
 });
 
-// ── Hue state polling ──
-let huePollingInterval = null;
-
-function startHuePolling() {
-  stopHuePolling();
-  if (!hueService.isPaired) return;
-
-  huePollingInterval = setInterval(async () => {
-    // Collect all Hue light IDs referenced in rooms
-    const hueIds = new Set();
-    allRooms().forEach(room => {
-      (room.functions || []).forEach(f => {
-        if (f.type === 'hue' && f.hueLightId) hueIds.add(f.hueLightId);
-      });
-    });
-    if (hueIds.size === 0) return;
-
-    const states = await hueService.getLightStates([...hueIds]);
-    if (Object.keys(states).length > 0) {
-      io.emit('hue_states', states);
-    }
-  }, 5000);
-}
-
-function stopHuePolling() {
-  if (huePollingInterval) {
-    clearInterval(huePollingInterval);
-    huePollingInterval = null;
-  }
-}
-
-// Start polling if already paired on boot
-if (hueService.isPaired) {
-  startHuePolling();
-}
-
-// Socket.io connection handling
 io.on('connection', (socket) => {
   console.log('Client connected to UI');
-  // Send current status to the newly connected frontend
-  socket.emit('knx_status', { 
-    connected: knxService.isConnected, 
-    msg: knxService.isConnected ? 'Connected to bus' : (config.knxIp ? 'Disconnected from bus' : 'No KNX IP Configured') 
-  });
-  
-  // Send Hue pairing status
-  socket.emit('hue_status', { paired: hueService.isPaired, bridgeIp: hueService.bridgeIp });
-  
-  // Broadcast initial parsed KNX values (persisted + live)
-  socket.emit('knx_initial_states', knxService.deviceStates);
+  emitAllStatuses(socket);
+  socket.emit('knx_initial_states', buildStateSnapshot());
 });
 
-// --- STATIC FRONTEND SERVING (PRODUCTION) ---
 const distPath = path.join(__dirname, '../frontend/dist');
 if (fs.existsSync(distPath)) {
   console.log(`Serving static frontend from ${distPath}`);
   app.use(express.static(distPath));
-  // Catch-all to serve index.html for React Router
   app.get(/.*/, (req, res) => {
     res.sendFile(path.join(distPath, 'index.html'));
   });
@@ -488,11 +873,11 @@ const PORT = 3001;
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`\n❌ ERROR: Port ${PORT} is already in use.`);
-    console.error(`This usually means the KNX Web App is already running in the background (e.g., via systemd or another terminal).`);
+    console.error('This usually means the KNX Web App is already running in the background (e.g., via systemd or another terminal).');
     console.error(`Stop the other instance (e.g., 'knx-stop' or 'pkill node') before starting a new one.\n`);
     process.exit(1);
   } else {
-    console.error(`\n❌ ERROR: Failed to start the server:`, err.message);
+    console.error('\n❌ ERROR: Failed to start the server:', err.message);
     process.exit(1);
   }
 });

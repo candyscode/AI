@@ -16,13 +16,27 @@ const restrictToHorizontalAxis = ({ transform }) => ({
   y: 0,
 });
 
+function FloorTabContent({ floor, showRoomCount }) {
+  return (
+    <span className="floor-tab-label">
+      {floor.name}
+      {floor.isShared && <span className="floor-tab-shared-badge">Shared</span>}
+      {showRoomCount && (
+        <span className="floor-tab-count">
+          {floor.rooms?.length || 0}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function SortableFloorTab({ floor, isActive, onClick, onDelete, canDelete, onReorderFloors, onRename, showRoomCount }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: floor.id });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.15 : 1,
     zIndex: isDragging ? 10 : 'auto',
   };
 
@@ -79,14 +93,7 @@ function SortableFloorTab({ floor, isActive, onClick, onDelete, canDelete, onReo
           onClick={e => e.stopPropagation()}
         />
       ) : (
-        <span className="floor-tab-label">
-          {floor.name}
-          {showRoomCount && (
-            <span className="floor-tab-count">
-              {floor.rooms?.length || 0}
-            </span>
-          )}
-        </span>
+        <FloorTabContent floor={floor} showRoomCount={showRoomCount} />
       )}
 
       {!editing && canDelete && (

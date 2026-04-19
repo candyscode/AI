@@ -66,16 +66,17 @@ describe('discoverHueBridge()', () => {
 describe('pairHueBridge()', () => {
   it('POSTs bridgeIp to /api/hue/pair', async () => {
     mockFetch.mockReturnValueOnce(mockResponse({ success: true, apiKey: 'key' }));
-    await api.pairHueBridge('192.168.1.65');
+    await api.pairHueBridge('apartment_1', '192.168.1.65');
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
     expect(body.bridgeIp).toBe('192.168.1.65');
+    expect(body.apartmentId).toBe('apartment_1');
   });
 });
 
 describe('unpairHueBridge()', () => {
   it('POSTs to /api/hue/unpair', async () => {
     mockFetch.mockReturnValueOnce(mockResponse({ success: true }));
-    await api.unpairHueBridge();
+    await api.unpairHueBridge('apartment_1');
     expect(mockFetch.mock.calls[0][0]).toContain('/api/hue/unpair');
     expect(mockFetch.mock.calls[0][1].method).toBe('POST');
   });
@@ -108,18 +109,18 @@ describe('getHueScenes()', () => {
 describe('linkHueRoom()', () => {
   it('POSTs hueRoomId to /api/config/rooms/:id/hue-room', async () => {
     mockFetch.mockReturnValueOnce(mockResponse({ success: true }));
-    await api.linkHueRoom('room1', 'hueRoom1');
+    await api.linkHueRoom('room1', 'hueRoom1', { apartmentId: 'apartment_1', scope: 'apartment' });
     const [url, opts] = mockFetch.mock.calls[0];
     expect(url).toContain('/api/config/rooms/room1/hue-room');
     expect(opts.method).toBe('POST');
-    expect(JSON.parse(opts.body).hueRoomId).toBe('hueRoom1');
+    expect(JSON.parse(opts.body)).toEqual(expect.objectContaining({ apartmentId: 'apartment_1', scope: 'apartment', hueRoomId: 'hueRoom1' }));
   });
 });
 
 describe('unlinkHueRoom()', () => {
   it('DELETEs /api/config/rooms/:id/hue-room', async () => {
     mockFetch.mockReturnValueOnce(mockResponse({ success: true }));
-    await api.unlinkHueRoom('room1');
+    await api.unlinkHueRoom('room1', { apartmentId: 'apartment_1', scope: 'apartment' });
     expect(mockFetch.mock.calls[0][0]).toContain('/api/config/rooms/room1/hue-room');
     expect(mockFetch.mock.calls[0][1].method).toBe('DELETE');
   });
@@ -128,16 +129,16 @@ describe('unlinkHueRoom()', () => {
 describe('linkHueScene()', () => {
   it('POSTs hueSceneId to /api/config/scenes/:id/hue-scene', async () => {
     mockFetch.mockReturnValueOnce(mockResponse({ success: true }));
-    await api.linkHueScene('scene1', 'hueScene1');
+    await api.linkHueScene('scene1', 'hueScene1', { apartmentId: 'apartment_1', scope: 'apartment' });
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.hueSceneId).toBe('hueScene1');
+    expect(body).toEqual(expect.objectContaining({ apartmentId: 'apartment_1', scope: 'apartment', hueSceneId: 'hueScene1' }));
   });
 });
 
 describe('unlinkHueScene()', () => {
   it('DELETEs /api/config/scenes/:id/hue-scene', async () => {
     mockFetch.mockReturnValueOnce(mockResponse({ success: true }));
-    await api.unlinkHueScene('scene1');
+    await api.unlinkHueScene('scene1', { apartmentId: 'apartment_1', scope: 'apartment' });
     expect(mockFetch.mock.calls[0][1].method).toBe('DELETE');
   });
 });
@@ -145,9 +146,11 @@ describe('unlinkHueScene()', () => {
 describe('triggerHueAction()', () => {
   it('POSTs lightId and on to /api/hue/action', async () => {
     mockFetch.mockReturnValueOnce(mockResponse({ success: true }));
-    await api.triggerHueAction('1', true);
+    await api.triggerHueAction('1', true, { apartmentId: 'apartment_1', scope: 'shared' });
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
     expect(body.lightId).toBe('1');
     expect(body.on).toBe(true);
+    expect(body.apartmentId).toBe('apartment_1');
+    expect(body.scope).toBe('shared');
   });
 });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { triggerAction, triggerHueAction, updateConfig } from './configApi';
+import { triggerAction, triggerHueAction } from './configApi';
 import { Lightbulb, Gamepad2, Blinds, Lock, LockOpen } from 'lucide-react';
 import FloorTabs from './components/FloorTabs';
 import GlobalInfoWidget from './components/GlobalInfoWidget';
@@ -57,7 +57,7 @@ const BlindsCard = ({ func, istPosition, isMoving, onAction }) => {
 };
 
 // ── Room Card ─────────────────────────────────────────────
-function RoomCard({ room, deviceStates, hueStates, setDeviceStates, setHueStates, handleAction, handleHueAction, handleSceneAction }) {
+function RoomCard({ room, deviceStates, hueStates, handleAction, handleHueAction, handleSceneAction }) {
   const roomScenes = room.scenes || [];
   const hasScenes = roomScenes.length > 0;
   const hasFunctions = room.functions && room.functions.length > 0;
@@ -156,13 +156,19 @@ function RoomCard({ room, deviceStates, hueStates, setDeviceStates, setHueStates
 }
 
 // ── Dashboard ─────────────────────────────────────────────
-export default function Dashboard({ config, fetchConfig, deviceStates = {}, hueStates = {}, setDeviceStates, setHueStates, addToast }) {
-  // Derive floors from config — support both legacy rooms[] and new floors[]
-  const floors = React.useMemo(() => {
-    if (config.floors && config.floors.length > 0) return config.floors;
-    if (config.rooms && config.rooms.length > 0) return [{ id: 'default', name: 'Ground Floor', rooms: config.rooms }];
-    return [];
-  }, [config]);
+export default function Dashboard({
+  apartment,
+  config,
+  fetchConfig,
+  deviceStates = {},
+  hueStates = {},
+  setDeviceStates,
+  setHueStates,
+  setSharedDeviceStates,
+  setSharedHueStates,
+  addToast
+}) {
+  const floors = React.useMemo(() => Array.isArray(config.floors) ? config.floors : [], [config]);
 
   const multiFloor = floors.length > 1;
   const [localFloors, setLocalFloors] = useState(floors);
@@ -181,61 +187,84 @@ export default function Dashboard({ config, fetchConfig, deviceStates = {}, hueS
   const activeFloor = localFloors.find(f => f.id === activeFloorId) || localFloors[0];
   const activeRooms = activeFloor?.rooms || [];
 
-  const handleSceneAction = async (room, scene) => {
+  const handleSceneAction = async (room, scene, scope = 'apartment') => {
     try {
-      const res = await triggerAction({ groupAddress: room.sceneGroupAddress, type: 'scene', sceneNumber: scene.sceneNumber });
+      const res = await triggerAction({
+        apartmentId: apartment.id,
+        scope,
+        groupAddress: room.sceneGroupAddress,
+        type: 'scene',
+        sceneNumber: scene.sceneNumber
+      });
       if (res.success) addToast(`${scene.name}`, 'success');
       else addToast(`Failed: ${res.error}`, 'error');
     } catch { addToast('Error communicating with backend server (is it running?)', 'error'); }
   };
 
-  const handleAction = async (func) => {
+  const handleAction = async (func, scope = 'apartment') => {
     const { groupAddress, type, sceneNumber, value } = func;
     const currentState = deviceStates[func.statusGroupAddress || groupAddress];
     let nextState = value;
     if (type === 'switch' && nextState === undefined) nextState = !currentState;
-    if (type === 'switch' && setDeviceStates && nextState !== undefined) {
-      setDeviceStates(prev => ({ ...prev, [func.statusGroupAddress || groupAddress]: nextState }));
+    const applyStateUpdate = scope === 'shared' ? setSharedDeviceStates : setDeviceStates;
+
+    if (type === 'switch' && applyStateUpdate && nextState !== undefined) {
+      applyStateUpdate((prev) => ({ ...prev, [func.statusGroupAddress || groupAddress]: nextState }));
     }
     try {
-      const res = await triggerAction({ groupAddress, type, sceneNumber, value: type === 'switch' ? !!nextState : nextState });
+      const res = await triggerAction({
+        apartmentId: apartment.id,
+        scope,
+        groupAddress,
+        type,
+        sceneNumber,
+        value: type === 'switch' ? !!nextState : nextState
+      });
       if (!res.success) {
-        if (type === 'switch' && setDeviceStates) setDeviceStates(prev => ({ ...prev, [func.statusGroupAddress || groupAddress]: currentState }));
+        if (type === 'switch' && applyStateUpdate) {
+          applyStateUpdate((prev) => ({ ...prev, [func.statusGroupAddress || groupAddress]: currentState }));
+        }
         addToast(`Failed: ${res.error}`, 'error');
       } else if (type === 'scene' || type === 'percentage') addToast(`Triggered ${func.name}`, 'success');
     } catch {
-      if (type === 'switch' && setDeviceStates) setDeviceStates(prev => ({ ...prev, [func.statusGroupAddress || groupAddress]: currentState }));
+      if (type === 'switch' && applyStateUpdate) {
+        applyStateUpdate((prev) => ({ ...prev, [func.statusGroupAddress || groupAddress]: currentState }));
+      }
       addToast('Error communicating with backend server (is it running?)', 'error');
     }
   };
 
-  const handleHueAction = async (func) => {
+  const handleHueAction = async (func, scope = 'apartment') => {
     const currentOn = !!hueStates[`hue_${func.hueLightId}`];
-    if (setHueStates) setHueStates(prev => ({ ...prev, [`hue_${func.hueLightId}`]: !currentOn }));
+    const applyHueUpdate = scope === 'shared' ? setSharedHueStates : setHueStates;
+    if (applyHueUpdate) applyHueUpdate((prev) => ({ ...prev, [`hue_${func.hueLightId}`]: !currentOn }));
     try {
-      const res = await triggerHueAction(func.hueLightId, !currentOn);
+      const res = await triggerHueAction(func.hueLightId, !currentOn, { apartmentId: apartment.id, scope });
       if (!res.success) {
-        if (setHueStates) setHueStates(prev => ({ ...prev, [`hue_${func.hueLightId}`]: currentOn }));
+        if (applyHueUpdate) applyHueUpdate((prev) => ({ ...prev, [`hue_${func.hueLightId}`]: currentOn }));
         addToast(`Hue error: ${res.error}`, 'error');
       }
     } catch {
-      if (setHueStates) setHueStates(prev => ({ ...prev, [`hue_${func.hueLightId}`]: currentOn }));
+      if (applyHueUpdate) applyHueUpdate((prev) => ({ ...prev, [`hue_${func.hueLightId}`]: currentOn }));
       addToast('Error communicating with Hue Bridge', 'error');
     }
   };
 
   if (floors.length === 0) {
     return (
-      <div className="glass-panel" style={{ textAlign: 'center', padding: '4rem 2rem' }}>
-        <h2 style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>No rooms configured</h2>
-        <p>Go to <strong>Rooms</strong> to add your first floor and rooms.</p>
+      <div>
+        <GlobalInfoWidget globals={[...(config.sharedInfos || []), ...(config.alarms || [])]} deviceStates={deviceStates} />
+        <div className="glass-panel" style={{ textAlign: 'center', padding: '4rem 2rem' }}>
+          <h2 style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>No rooms configured</h2>
+          <p>Go to <strong>Rooms</strong> to add your first area and rooms.</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div>
-      <GlobalInfoWidget globals={config.globals} deviceStates={deviceStates} />
+      <GlobalInfoWidget globals={[...(config.sharedInfos || []), ...(config.alarms || [])]} deviceStates={deviceStates} />
 
       {multiFloor && (
         <FloorTabs
@@ -257,9 +286,9 @@ export default function Dashboard({ config, fetchConfig, deviceStates = {}, hueS
           {activeRooms.map(room => (
             <RoomCard key={room.id} room={room}
               deviceStates={deviceStates} hueStates={hueStates}
-              setDeviceStates={setDeviceStates} setHueStates={setHueStates}
-              handleAction={handleAction} handleHueAction={handleHueAction}
-              handleSceneAction={handleSceneAction} />
+              handleAction={(func) => handleAction(func, activeFloor?.isShared ? 'shared' : 'apartment')}
+              handleHueAction={(func) => handleHueAction(func, activeFloor?.isShared ? 'shared' : 'apartment')}
+              handleSceneAction={(selectedRoom, scene) => handleSceneAction(selectedRoom, scene, activeFloor?.isShared ? 'shared' : 'apartment')} />
           ))}
         </div>
       )}

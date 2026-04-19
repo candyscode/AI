@@ -11,10 +11,26 @@ import { triggerSocketEvent, resetSocketMock } from '../__mocks__/socket.io-clie
 // Mock the configApi module so we don't make real HTTP calls
 vi.mock('../configApi', () => ({
   getConfig: vi.fn().mockResolvedValue({
-    knxIp: '192.168.1.85',
-    knxPort: 3671,
-    hue: { bridgeIp: '', apiKey: '' },
-    rooms: [],
+    version: 2,
+    building: {
+      sharedAccessApartmentId: 'apartment_1',
+      sharedInfos: [],
+      sharedAreas: [],
+      sharedImportedGroupAddresses: [],
+      sharedImportedGroupAddressesFileName: '',
+    },
+    apartments: [{
+      id: 'apartment_1',
+      name: 'Wohnung 1',
+      slug: 'wohnung-1',
+      knxIp: '192.168.1.85',
+      knxPort: 3671,
+      hue: { bridgeIp: '', apiKey: '' },
+      floors: [{ id: 'floor-1', name: 'Ground Floor', rooms: [] }],
+      alarms: [],
+      importedGroupAddresses: [],
+      importedGroupAddressesFileName: '',
+    }],
   }),
   updateConfig: vi.fn().mockResolvedValue({ success: true }),
   triggerAction: vi.fn().mockResolvedValue({ success: true }),
@@ -49,8 +65,7 @@ describe('App — rendering', () => {
 
   it('shows Dashboard content by default', async () => {
     await act(async () => { render(<App />); });
-    // Dashboard empty state appears when rooms=[]
-    expect(screen.getByText(/No rooms configured/i)).toBeInTheDocument();
+    expect(screen.getByText(/No rooms on/i)).toBeInTheDocument();
   });
 
   it('navigates to Settings when Settings tab is clicked', async () => {
@@ -70,7 +85,7 @@ describe('App — rendering', () => {
     await user.click(screen.getByRole('button', { name: /rooms/i }));
     await user.click(screen.getByRole('button', { name: /dashboard/i }));
 
-    expect(screen.getByText(/No rooms configured/i)).toBeInTheDocument();
+    expect(screen.getByText(/No rooms on/i)).toBeInTheDocument();
   });
 });
 
@@ -84,7 +99,7 @@ describe('App — KNX status badge', () => {
     await act(async () => { render(<App />); });
 
     await act(async () => {
-      triggerSocketEvent('knx_status', { connected: true, msg: 'Connected successfully to bus' });
+      triggerSocketEvent('knx_status', { apartmentId: 'apartment_1', scope: 'apartment', connected: true, msg: 'Connected successfully to bus' });
     });
 
     expect(screen.getByText(/connected/i)).toBeInTheDocument();
@@ -94,7 +109,7 @@ describe('App — KNX status badge', () => {
     await act(async () => { render(<App />); });
 
     await act(async () => {
-      triggerSocketEvent('knx_status', { connected: false, msg: 'Disconnected from bus' });
+      triggerSocketEvent('knx_status', { apartmentId: 'apartment_1', scope: 'apartment', connected: false, msg: 'Disconnected from bus' });
     });
 
     expect(screen.getByText(/offline/i)).toBeInTheDocument();
@@ -132,25 +147,45 @@ describe('App — toast system', () => {
 describe('App — socket state updates', () => {
   it('updates device state when knx_state_update fires', async () => {
     vi.mocked((await import('../configApi')).getConfig).mockResolvedValueOnce({
-      knxIp: '192.168.1.85',
-      knxPort: 3671,
-      hue: { bridgeIp: '', apiKey: '' },
-      rooms: [{
-        id: 'r1', name: 'Living Room',
-        sceneGroupAddress: '3/5/0',
-        scenes: [],
-        functions: [{
-          id: 'f1', name: 'Main Light', type: 'switch',
-          groupAddress: '1/0/0', statusGroupAddress: '1/0/1',
+      version: 2,
+      building: {
+        sharedAccessApartmentId: 'apartment_1',
+        sharedInfos: [],
+        sharedAreas: [],
+        sharedImportedGroupAddresses: [],
+        sharedImportedGroupAddressesFileName: '',
+      },
+      apartments: [{
+        id: 'apartment_1',
+        name: 'Wohnung 1',
+        slug: 'wohnung-1',
+        knxIp: '192.168.1.85',
+        knxPort: 3671,
+        hue: { bridgeIp: '', apiKey: '' },
+        floors: [{
+          id: 'floor-1',
+          name: 'Ground Floor',
+          rooms: [{
+            id: 'r1', name: 'Living Room',
+            sceneGroupAddress: '3/5/0',
+            scenes: [],
+            functions: [{
+              id: 'f1', name: 'Main Light', type: 'switch',
+              groupAddress: '1/0/0', statusGroupAddress: '1/0/1',
+            }],
+          }],
         }],
+        alarms: [],
+        importedGroupAddresses: [],
+        importedGroupAddressesFileName: '',
       }],
     });
 
     await act(async () => { render(<App />); });
 
     await act(async () => {
-      triggerSocketEvent('knx_initial_states', { '1/0/1': false });
-      triggerSocketEvent('knx_state_update', { groupAddress: '1/0/1', value: true });
+      triggerSocketEvent('knx_initial_states', { apartments: { apartment_1: { '1/0/1': false } }, shared: {} });
+      triggerSocketEvent('knx_state_update', { apartmentId: 'apartment_1', scope: 'apartment', groupAddress: '1/0/1', value: true });
     });
 
     // The toggle should now show "active" state  

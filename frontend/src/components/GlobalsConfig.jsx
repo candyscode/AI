@@ -1,11 +1,19 @@
 import React, { useState } from 'react';
 import { Plus, Search, Check, X, AlertTriangle, Info, Thermometer, Wind, Sun } from 'lucide-react';
 
-export default function GlobalsConfig({ globals, setGlobals, saveGlobals, openGroupAddressModal }) {
-  const [addingType, setAddingType] = useState(null); // 'info' or 'alarm' or null
+function ItemSection({
+  title,
+  items,
+  type,
+  setItems,
+  saveItems,
+  openGroupAddressModal,
+  emptyText,
+}) {
+  const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ name: '', category: 'temperature', statusGroupAddress: '' });
 
-  const getCategoryIcon = (type, category) => {
+  const getCategoryIcon = (category) => {
     if (type === 'alarm') return <AlertTriangle size={18} style={{ color: 'var(--danger-color)' }} />;
     if (category === 'temperature') return <Thermometer size={18} style={{ color: '#3b82f6' }} />;
     if (category === 'wind') return <Wind size={18} style={{ color: '#0ea5e9' }} />;
@@ -13,147 +21,145 @@ export default function GlobalsConfig({ globals, setGlobals, saveGlobals, openGr
     return <Info size={18} />;
   };
 
-  const handleAdd = () => {
-    if (!draft.name) return;
-    const newGlobal = { 
-      id: `global_${Date.now()}`, 
-      name: draft.name,
-      type: addingType,
-      category: addingType === 'alarm' ? 'alarm' : draft.category,
-      statusGroupAddress: draft.statusGroupAddress,
-      dpt: '' // will be populated from XML import
-    };
-    saveGlobals([...globals, newGlobal]);
-    setAddingType(null);
-    setDraft({ name: '', category: 'temperature', statusGroupAddress: '' });
+  const handleAdd = async () => {
+    if (!draft.name.trim()) return;
+
+    const nextItems = [
+      ...items,
+      {
+        id: `${type}_${Date.now()}`,
+        name: draft.name.trim(),
+        type,
+        category: type === 'alarm' ? 'alarm' : draft.category,
+        statusGroupAddress: draft.statusGroupAddress,
+        dpt: '',
+      },
+    ];
+
+    const success = await saveItems(nextItems);
+    if (success) {
+      setAdding(false);
+      setDraft({ name: '', category: 'temperature', statusGroupAddress: '' });
+    }
   };
 
-  const handleDelete = (id) => {
-    if (!window.confirm("Are you sure you want to delete this global item?")) return;
-    saveGlobals(globals.filter(g => g.id !== id));
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this item?')) return;
+    await saveItems(items.filter((item) => item.id !== id));
   };
 
-  const updateItem = (id, key, val) => {
-    setGlobals(globals.map(g => g.id === id ? { ...g, [key]: val } : g));
-  };
-
-  const openGAModal = (id, currentType) => {
-    const dptFilter = currentType === 'alarm' ? '1.' : '9.';
-    openGroupAddressModal({
-      title: 'Select Group Address for Global Item',
-      mode: 'any',
-      dptFilter: dptFilter,
-      target: { kind: 'global', id },
-      allowUpload: false,
-      helperText: `Select a compatible imported ETS group address matching DPT ${dptFilter}x.`
-    });
+  const updateItem = (id, key, value) => {
+    setItems(items.map((item) => item.id === id ? { ...item, [key]: value } : item));
   };
 
   return (
-    <div style={{ marginBottom: '2rem' }}>
-      {globals.length === 0 && !addingType && (
-        <div style={{ background: 'var(--glass-bg)', padding: '1.5rem', borderRadius: '12px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-          <p>No global values or alarms configured yet.</p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+        <h4 style={{ margin: 0 }}>{title}</h4>
+        <button className="btn-secondary" onClick={() => setAdding(true)}>
+          <Plus size={16} /> {type === 'alarm' ? 'Add Alarm' : 'Add Shared Information'}
+        </button>
+      </div>
+
+      {items.length === 0 && !adding && (
+        <div style={{ background: 'var(--glass-bg)', padding: '1.25rem', borderRadius: '12px', color: 'var(--text-secondary)' }}>
+          {emptyText}
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {globals.map(g => (
-          <div key={g.id} className="function-card" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', paddingRight: '3rem' }}>
-            
-            {/* Absolute close button in top right */}
-            <button 
-              type="button" 
-              className="icon-btn btn-danger" 
-              onClick={() => handleDelete(g.id)} 
-              title="Delete item"
-              style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', width: '26px', height: '26px', padding: '0', borderRadius: '50%' }}
-            >
-              <X size={14} />
-            </button>
-            
-            <div style={{ padding: '1rem 0 0.5rem 0.5rem' }} title={g.type === 'alarm' ? 'Alarm' : g.category}>
-              {getCategoryIcon(g.type, g.category)}
-            </div>
+      {items.map((item) => (
+        <div key={item.id} className="function-card" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', paddingRight: '3rem' }}>
+          <button
+            type="button"
+            className="icon-btn btn-danger"
+            onClick={() => handleDelete(item.id)}
+            title="Delete item"
+            style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', width: '26px', height: '26px', padding: '0', borderRadius: '50%' }}
+          >
+            <X size={14} />
+          </button>
 
-            <div className="settings-field" style={{ flex: 1, minWidth: '150px' }}>
-              <label className="settings-field-label">Name</label>
+          <div style={{ padding: '1rem 0 0.5rem 0.5rem' }}>{getCategoryIcon(item.category)}</div>
+
+          <div className="settings-field" style={{ flex: 1, minWidth: '180px' }}>
+            <label className="settings-field-label">Name</label>
+            <input
+              className="form-input"
+              value={item.name}
+              onChange={(event) => updateItem(item.id, 'name', event.target.value)}
+              onBlur={() => saveItems(items)}
+              placeholder={type === 'alarm' ? 'e.g. Rain Alarm' : 'e.g. Outside Temperature'}
+            />
+          </div>
+
+          {type === 'info' && (
+            <div className="settings-field" style={{ width: '240px', minWidth: '240px' }}>
+              <label className="settings-field-label">Category</label>
+              <select
+                className="form-select"
+                value={item.category}
+                onChange={(event) => saveItems(items.map((entry) => entry.id === item.id ? { ...entry, category: event.target.value } : entry))}
+              >
+                <option value="temperature">Temperature (°C)</option>
+                <option value="wind">Wind (m/s)</option>
+                <option value="lux">Brightness (Lux)</option>
+              </select>
+            </div>
+          )}
+
+          <div className="settings-field" style={{ flex: 1, minWidth: '180px' }}>
+            <label className="settings-field-label">Group Address</label>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               <input
                 className="form-input"
-                value={g.name}
-                onChange={e => updateItem(g.id, 'name', e.target.value)}
-                onBlur={() => saveGlobals(globals)}
-                placeholder={g.type === 'alarm' ? 'e.g. Rain Alarm' : 'e.g. Outside Temperature'}
+                value={item.statusGroupAddress || ''}
+                onChange={(event) => updateItem(item.id, 'statusGroupAddress', event.target.value)}
+                onBlur={() => saveItems(items)}
+                placeholder="e.g. 1/1/1"
               />
+              <button
+                type="button"
+                className="btn-secondary-sm"
+                onClick={() => openGroupAddressModal({
+                  title: type === 'alarm' ? 'Select Alarm Group Address' : 'Select Shared Information Group Address',
+                  mode: 'any',
+                  dptFilter: type === 'alarm' ? '1.' : '9.',
+                  target: { kind: type === 'alarm' ? 'alarm' : 'sharedInfo', id: item.id },
+                  allowUpload: false,
+                  helperText: type === 'alarm'
+                    ? 'Select a compatible alarm GA matching DPT 1.x.'
+                    : 'Select a compatible shared information GA matching DPT 9.x.',
+                  scope: type === 'alarm' ? 'apartment' : 'shared',
+                })}
+                title="Browse ETS addresses"
+              >
+                <Search size={14} />
+              </button>
             </div>
-
-            {g.type === 'info' && (
-              <div className="settings-field" style={{ width: '220px' }}>
-                <label className="settings-field-label">Category</label>
-                <select className="form-select" value={g.category} onChange={e => saveGlobals(globals.map(item => item.id === g.id ? { ...item, category: e.target.value } : item))}>
-                  <option value="temperature">Temperature (°C)</option>
-                  <option value="wind">Wind (m/s)</option>
-                  <option value="lux">Brightness (Lux)</option>
-                </select>
-              </div>
-            )}
-
-            <div className="settings-field" style={{ flex: 1, minWidth: '150px' }}>
-              <label className="settings-field-label">Group Address</label>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <input
-                  className="form-input"
-                  value={g.statusGroupAddress || ''}
-                  onChange={e => updateItem(g.id, 'statusGroupAddress', e.target.value)}
-                  onBlur={() => saveGlobals(globals)}
-                  placeholder="e.g. 1/1/1"
-                />
-                <button
-                  type="button"
-                  className="btn-secondary-sm"
-                  onClick={() => openGAModal(g.id, g.type)}
-                  title="Browse ETS addresses"
-                >
-                  <Search size={14} />
-                </button>
-              </div>
-            </div>
-
-            {/* Hidden DPT field in UI, but it exists in the data model. */}
-
           </div>
-        ))}
-      </div>
-
-      {!addingType ? (
-        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
-          <button className="btn-secondary" onClick={() => setAddingType('info')}>
-            <Plus size={16} /> Add Information
-          </button>
-          <button className="btn-secondary" onClick={() => setAddingType('alarm')} style={{ color: 'var(--danger-color)' }}>
-            <AlertTriangle size={16} /> Add Alarm
-          </button>
         </div>
-      ) : (
-        <div style={{ marginTop: '1rem', background: 'var(--glass-bg)', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+      ))}
+
+      {adding && (
+        <div style={{ background: 'var(--glass-bg)', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
           <h4 style={{ margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {addingType === 'alarm' ? <><AlertTriangle size={16} /> New Alarm</> : <><Info size={16} /> New Global Information</>}
+            {type === 'alarm' ? <><AlertTriangle size={16} /> New Alarm</> : <><Info size={16} /> New Shared Information</>}
           </h4>
           <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
             <input
               className="form-input"
               value={draft.name}
-              onChange={e => setDraft({ ...draft, name: e.target.value })}
-              placeholder={addingType === 'alarm' ? "Name (e.g. Rain Alarm)" : "Name (e.g. Outside Temperature)"}
-              style={{ flex: 1, minWidth: '200px' }}
+              onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+              placeholder={type === 'alarm' ? 'Name (e.g. Rain Alarm)' : 'Name (e.g. Outside Temperature)'}
+              style={{ flex: 1, minWidth: '220px' }}
               autoFocus
             />
-            {addingType === 'info' && (
+            {type === 'info' && (
               <select
                 className="form-select"
                 value={draft.category}
-                onChange={e => setDraft({ ...draft, category: e.target.value })}
-                style={{ width: '220px', minWidth: '220px' }}
+                onChange={(event) => setDraft({ ...draft, category: event.target.value })}
+                style={{ width: '240px', minWidth: '240px' }}
               >
                 <option value="temperature">Temperature (°C)</option>
                 <option value="wind">Wind (m/s)</option>
@@ -162,15 +168,49 @@ export default function GlobalsConfig({ globals, setGlobals, saveGlobals, openGr
             )}
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-            <button className="btn-primary" onClick={handleAdd} disabled={!draft.name}>
+            <button className="btn-primary" onClick={handleAdd} disabled={!draft.name.trim()}>
               <Check size={16} /> Save Item
             </button>
-            <button className="btn-secondary" onClick={() => { setAddingType(null); setDraft({ name: '', category: 'temperature', statusGroupAddress: '' });}}>
+            <button className="btn-secondary" onClick={() => setAdding(false)}>
               <X size={16} /> Cancel
             </button>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+export default function GlobalsConfig({
+  sharedInfos,
+  apartmentAlarms,
+  setSharedInfos,
+  setApartmentAlarms,
+  saveSharedInfos,
+  saveApartmentAlarms,
+  openGroupAddressModal,
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <ItemSection
+        title="Shared Information"
+        items={sharedInfos}
+        type="info"
+        setItems={setSharedInfos}
+        saveItems={saveSharedInfos}
+        openGroupAddressModal={openGroupAddressModal}
+        emptyText="No shared information configured yet."
+      />
+
+      <ItemSection
+        title="Apartment Alarms"
+        items={apartmentAlarms}
+        type="alarm"
+        setItems={setApartmentAlarms}
+        saveItems={saveApartmentAlarms}
+        openGroupAddressModal={openGroupAddressModal}
+        emptyText="No apartment-specific alarms configured yet."
+      />
     </div>
   );
 }
