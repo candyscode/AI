@@ -4,10 +4,14 @@ import { KNXGroupAddressModal } from '../components/KNXGroupAddressModal';
 
 const ADDRESSES = [
   { id: 'switch', address: '1/1/2', name: 'Switch Status', functionType: 'switch', dpt: 'DPT1.001', room: 'Living Room', supported: true },
+  { id: 'switch-space', address: '1/1/3', name: 'Switch Status Space', functionType: 'switch', dpt: 'DPT 1.001', room: 'Living Room', supported: true },
+  { id: 'switch-dpst', address: '1/1/4', name: 'Switch Status DPST', functionType: 'switch', dpt: 'DPST-1-1', room: 'Living Room', supported: true },
   { id: 'percentage', address: '2/1/6', name: 'Blind Position', functionType: 'percentage', dpt: 'DPT5.001', room: 'Living Room', supported: true },
   { id: 'scene', address: '3/5/4', name: 'Scene Control', functionType: 'scene', dpt: 'DPT17.001', room: 'Living Room', supported: true },
   { id: 'temp-dpt', address: '5/1/1', name: 'Room Temperature', functionType: 'temperature', dpt: 'DPT9.001', room: 'Living Room', supported: true },
+  { id: 'temp-space', address: '5/1/4', name: 'Room Temperature Space', functionType: 'temperature', dpt: 'DPT 9.001', room: 'Living Room', supported: true },
   { id: 'temp-plain', address: '5/1/2', name: 'Outside Temperature', functionType: 'temperature', dpt: '9.001', room: 'Outside', supported: true },
+  { id: 'temp-dpst', address: '5/1/3', name: 'ETS Room Temperature', functionType: 'temperature', dpt: 'DPST-9-1', room: 'Bedroom', supported: true },
   { id: 'unsupported', address: '9/9/9', name: 'Unsupported', functionType: 'switch', dpt: 'DPT99.999', room: 'Lab', supported: false },
 ];
 
@@ -32,7 +36,9 @@ describe('KNXGroupAddressModal — filtering', () => {
     renderModal({ mode: 'switch' });
 
     expect(screen.getByText(/filtered list: switch\/status group addresses only/i)).toBeInTheDocument();
-    expect(screen.getByText(/switch status/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Switch Status$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Switch Status Space$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Switch Status DPST$/i)).toBeInTheDocument();
     expect(screen.queryByText(/blind position/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/scene control/i)).not.toBeInTheDocument();
   });
@@ -55,20 +61,24 @@ describe('KNXGroupAddressModal — filtering', () => {
     expect(screen.queryByText(/blind position/i)).not.toBeInTheDocument();
   });
 
-  it('filters DPT 9.x addresses and shows the DPT filter badge', () => {
+  it('filters all supported 9.x DPT and DPST variants and shows the DPT filter badge', () => {
     renderModal({ mode: 'any', dptFilter: '9.' });
 
     expect(screen.getByText(/filtered list: matching dpt 9\.x only/i)).toBeInTheDocument();
-    expect(screen.getByText(/room temperature/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Room Temperature$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Room Temperature Space$/i)).toBeInTheDocument();
     expect(screen.getByText(/outside temperature/i)).toBeInTheDocument();
+    expect(screen.getByText(/^ETS Room Temperature$/i)).toBeInTheDocument();
     expect(screen.queryByText(/switch status/i)).not.toBeInTheDocument();
   });
 
-  it('filters DPT 1.x addresses and excludes non-matching types', () => {
+  it('filters all supported 1.x DPT and DPST variants and excludes non-matching types', () => {
     renderModal({ mode: 'any', dptFilter: '1.' });
 
     expect(screen.getByText(/filtered list: matching dpt 1\.x only/i)).toBeInTheDocument();
-    expect(screen.getByText(/switch status/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Switch Status$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Switch Status Space$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Switch Status DPST$/i)).toBeInTheDocument();
     expect(screen.queryByText(/room temperature/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/outside temperature/i)).not.toBeInTheDocument();
   });

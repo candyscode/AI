@@ -4,10 +4,19 @@ import { Search, Upload, X, FileText, Trash2, Check } from 'lucide-react';
 import { parseKNXGroupAddressXML } from '../knx-xml-parser';
 
 function normalizeDptPrefix(value) {
-  return String(value || '')
+  const normalized = String(value || '')
     .trim()
     .toUpperCase()
-    .replace(/^DPT\s*/i, '');
+    .replace(/^DPST\s*[- ]*/i, '')
+    .replace(/^DPT\s*[- ]*/i, '')
+    .replace(/\s+/g, '')
+    .replace(/-/g, '.');
+
+  const match = normalized.match(/^(\d+)(?:\.(\d+))?/);
+  if (!match) return normalized;
+
+  const [, mainType, subType] = match;
+  return subType ? `${mainType}.${subType}` : `${mainType}.`;
 }
 
 function isAddressAllowedForMode(address, mode, dptFilter) {
