@@ -19,16 +19,31 @@ function extractRoomFromName(name: string) {
   return '';
 }
 
+function normalizeDptFamily(dpt: string) {
+  const normalized = String(dpt || '')
+    .trim()
+    .toUpperCase()
+    .replace(/^DPST\s*[- ]*/i, '')
+    .replace(/^DPT\s*[- ]*/i, '')
+    .replace(/\s+/g, '');
+
+  const match = normalized.match(/^(\d+)/);
+  return match ? match[1] : '';
+}
+
 function inferFunctionType(name: string, dpt: string) {
   const normalizedName = (name || '').toLowerCase();
   const normalizedDpt = (dpt || '').toLowerCase();
+  const dptFamily = normalizeDptFamily(dpt);
 
   if (normalizedDpt.includes('17.') || normalizedDpt.includes('17-')) return 'scene';
   if (normalizedDpt.includes('1.') || normalizedDpt.includes('1-')) return 'switch';
   if (normalizedDpt.includes('5.001') || normalizedDpt.includes('5-1')) return 'percentage';
+  if (dptFamily === '9') return 'temperature';
   if (/(jalousie|blind|shade|shutter|rollladen)/.test(normalizedName)) return 'percentage';
   if (/(scene|szene)/.test(normalizedName)) return 'scene';
   if (/(switch|light|licht|on\/off|ein\/aus)/.test(normalizedName)) return 'switch';
+  if (/(temperatur|temperature|temp|sollwert)/.test(normalizedName)) return 'temperature';
 
   return null;
 }
@@ -40,8 +55,14 @@ export interface ImportedGroupAddress {
   dpt: string;
   room: string;
   rangePath: string[];
-  functionType: 'switch' | 'percentage' | 'scene' | null;
+  functionType: 'switch' | 'percentage' | 'scene' | 'temperature' | null;
   supported: boolean;
+}
+
+function isSupportedGroupAddress(dpt: string, functionType: ImportedGroupAddress['functionType']) {
+  const dptFamily = normalizeDptFamily(dpt);
+  if (dptFamily === '1' || dptFamily === '5' || dptFamily === '9' || dptFamily === '17') return true;
+  return functionType !== null;
 }
 
 export function parseKNXGroupAddressXML(xmlString: string): ImportedGroupAddress[] {
@@ -84,7 +105,7 @@ export function parseKNXGroupAddressXML(xmlString: string): ImportedGroupAddress
       room: derivedRoom || fallbackRoom,
       rangePath,
       functionType,
-      supported: functionType !== null,
+      supported: isSupportedGroupAddress(dpt, functionType),
     };
   });
 }
