@@ -463,4 +463,36 @@ describe('Settings — shared information and apartment alarms', () => {
     expect(screen.getByText('file:apartment.xml')).toBeInTheDocument();
     expect(screen.getByText('count:1')).toBeInTheDocument();
   });
+
+  it('persists the DPT for manually entered shared info GAs when the XML contains a match', async () => {
+    const user = userEvent.setup();
+    renderSettings({
+      ...FULL_CONFIG,
+      building: {
+        ...FULL_CONFIG.building,
+        sharedImportedGroupAddresses: [{ address: '1/6/3', name: 'Aussentemperatur', dpt: 'DPST-9-1', supported: true }],
+        sharedImportedGroupAddressesFileName: 'ga1.xml',
+      },
+    });
+
+    await user.click(screen.getByRole('button', { name: /global info & alarms/i }));
+    const groupAddressInput = screen.getAllByPlaceholderText('e.g. 1/1/1')[0];
+    await user.clear(groupAddressInput);
+    await user.type(groupAddressInput, '1/6/3');
+    groupAddressInput.blur();
+
+    await waitFor(() => {
+      expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+        building: expect.objectContaining({
+          sharedInfos: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'info-1',
+              statusGroupAddress: '1/6/3',
+              dpt: 'DPST-9-1',
+            }),
+          ]),
+        }),
+      }));
+    });
+  });
 });

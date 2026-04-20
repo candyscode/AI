@@ -14,3 +14,7 @@ export function findImportedGroupAddress(addressBook, value) {
 export function getImportedGroupAddressName(addressBook, value) {
   return findImportedGroupAddress(addressBook, value)?.name || '';
 }
+
+export function getImportedGroupAddressDpt(addressBook, value) {
+  return findImportedGroupAddress(addressBook, value)?.dpt || '';
+}

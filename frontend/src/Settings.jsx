@@ -14,7 +14,7 @@ import CollapsibleRoomCard from './components/CollapsibleRoomCard';
 import GlobalsConfig from './components/GlobalsConfig';
 import ConfirmDialog from './components/ConfirmDialog';
 import { Plus, Search, Lightbulb, Sparkles, Settings as SettingsIcon } from 'lucide-react';
-import { getImportedGroupAddressName } from './groupAddressUtils';
+import { getImportedGroupAddressDpt, getImportedGroupAddressName } from './groupAddressUtils';
 
 // ── Migration ─────────────────────────────────────────────
 function migrateRooms(inputRooms) {
@@ -411,9 +411,14 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
   };
 
   const saveSharedInfos = async (nextInfos = sharedInfos) => {
-    setSharedInfos(nextInfos);
+    const sharedAddressBook = sharedUsesApartmentImportedGroupAddresses ? apartmentGroupAddressBook : sharedGroupAddressBook;
+    const normalizedInfos = nextInfos.map((info) => {
+      const resolvedDpt = info?.dpt || getImportedGroupAddressDpt(sharedAddressBook, info?.statusGroupAddress);
+      return resolvedDpt ? { ...info, dpt: resolvedDpt } : info;
+    });
+    setSharedInfos(normalizedInfos);
     try {
-      await persistConfig(buildNextConfig({ nextSharedInfos: nextInfos }));
+      await persistConfig(buildNextConfig({ nextSharedInfos: normalizedInfos }));
       return true;
     } catch {
       addToast('Failed to save shared information', 'error');
@@ -422,9 +427,13 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
   };
 
   const saveAlarms = async (nextAlarms = alarms) => {
-    setAlarms(nextAlarms);
+    const normalizedAlarms = nextAlarms.map((alarm) => {
+      const resolvedDpt = alarm?.dpt || getImportedGroupAddressDpt(apartmentGroupAddressBook, alarm?.statusGroupAddress);
+      return resolvedDpt ? { ...alarm, dpt: resolvedDpt } : alarm;
+    });
+    setAlarms(normalizedAlarms);
     try {
-      await persistConfig(buildNextConfig({ nextAlarms }));
+      await persistConfig(buildNextConfig({ nextAlarms: normalizedAlarms }));
       return true;
     } catch {
       addToast('Failed to save apartment alarms', 'error');

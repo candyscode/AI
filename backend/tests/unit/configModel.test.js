@@ -7,6 +7,7 @@ const {
   getApartmentBySlug,
   getSharedAccessApartment,
   migrateLegacyConfig,
+  normalizeDptString,
   normalizeConfigShape,
 } = require('../../configModel');
 
@@ -87,6 +88,39 @@ describe('configModel migration and normalization', () => {
     });
 
     expect(normalized.building.sharedUsesApartmentImportedGroupAddresses).toBe(true);
+  });
+
+  it('normalizes imported and persisted ETS DPT formats into backend-safe DPT ids', () => {
+    const normalized = normalizeConfigShape({
+      version: 2,
+      building: {
+        sharedAccessApartmentId: 'apartment_1',
+        sharedInfos: [{ id: 'info-1', name: 'Outside Temperature', statusGroupAddress: '1/6/3', dpt: 'DPST-9-1' }],
+        sharedAreas: [],
+        sharedImportedGroupAddresses: [{ address: '1/6/4', name: 'Wind', dpt: 'DPT 9.005', supported: true }],
+        sharedImportedGroupAddressesFileName: 'shared.xml',
+      },
+      apartments: [{
+        id: 'apartment_1',
+        name: 'Wohnung Ost',
+        slug: 'wohnung-ost',
+        floors: [],
+        alarms: [{ id: 'alarm-1', name: 'Rain Alarm', statusGroupAddress: '1/7/1', dpt: 'DPST-1-1' }],
+      }],
+    });
+
+    expect(normalized.building.sharedInfos[0].dpt).toBe('DPT9.001');
+    expect(normalized.building.sharedImportedGroupAddresses[0].dpt).toBe('DPT9.005');
+    expect(normalized.apartments[0].alarms[0].dpt).toBe('DPT1.001');
+  });
+});
+
+describe('normalizeDptString', () => {
+  it('normalizes DPST and spaced DPT values into KNX library compatible ids', () => {
+    expect(normalizeDptString('DPST-9-1')).toBe('DPT9.001');
+    expect(normalizeDptString('DPT 9.005')).toBe('DPT9.005');
+    expect(normalizeDptString('9.028')).toBe('DPT9.028');
+    expect(normalizeDptString('DPST-1-1')).toBe('DPT1.001');
   });
 });
 

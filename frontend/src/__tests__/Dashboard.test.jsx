@@ -147,6 +147,37 @@ describe('Dashboard — globals widget', () => {
     expect(screen.getByText('Active Alarms')).toBeInTheDocument();
     expect(screen.getAllByText((_, node) => node?.textContent?.includes('Rain Alarm') ?? false).length).toBeGreaterThan(0);
   });
+
+  it('does not render NaN for invalid shared info values', () => {
+    renderDashboard({
+      rooms: [ROOM_WITH_SCENES],
+      sharedInfos: [
+        { id: 'g1', name: 'Outside Temperature', type: 'info', category: 'temperature', statusGroupAddress: '1/6/3' },
+        { id: 'g2', name: 'Wind Speed', type: 'info', category: 'wind', statusGroupAddress: '1/6/4' },
+      ],
+      deviceStates: {
+        '1/6/3': 'not-a-number',
+        '1/6/4': {},
+      },
+    });
+
+    expect(screen.queryByText(/NaN/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText('--')).toHaveLength(2);
+  });
+
+  it('renders wind speed with a single decimal place', () => {
+    renderDashboard({
+      rooms: [ROOM_WITH_SCENES],
+      sharedInfos: [
+        { id: 'g1', name: 'Wind Speed', type: 'info', category: 'wind', statusGroupAddress: '1/6/4' },
+      ],
+      deviceStates: {
+        '1/6/4': 0,
+      },
+    });
+
+    expect(screen.getByText('0.0 m/s')).toBeInTheDocument();
+  });
 });
 
 describe('Dashboard — shared area behavior', () => {

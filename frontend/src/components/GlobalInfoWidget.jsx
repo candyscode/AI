@@ -1,6 +1,12 @@
 import React from 'react';
 import { AlertTriangle, Thermometer, Wind, Sun, Info } from 'lucide-react';
 
+function formatNumericValue(value, digits, unit, fallback = '--') {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return `${parsed.toFixed(digits)} ${unit}`;
+}
+
 export default function GlobalInfoWidget({ globals, deviceStates }) {
   if (!globals || globals.length === 0) return null;
 
@@ -52,13 +58,16 @@ export default function GlobalInfoWidget({ globals, deviceStates }) {
             let Icon = Info;
             if (info.category === 'temperature') {
               Icon = Thermometer;
-              if (val !== undefined) displayVal = `${parseFloat(val).toFixed(1)} °C`;
+              if (val !== undefined) displayVal = formatNumericValue(val, 1, '°C');
             } else if (info.category === 'wind') {
               Icon = Wind;
-              if (val !== undefined) displayVal = `${parseFloat(val).toFixed(2)} m/s`;
+              if (val !== undefined) displayVal = formatNumericValue(val, 1, 'm/s');
             } else if (info.category === 'lux') {
               Icon = Sun;
-              if (val !== undefined) displayVal = `${Math.round(val)} Lux`;
+              if (val !== undefined) {
+                const parsed = Number(val);
+                displayVal = Number.isFinite(parsed) ? `${Math.round(parsed)} Lux` : '--';
+              }
             }
 
             return (
