@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   updateConfig,
   discoverHueBridge,
@@ -7,9 +7,9 @@ import {
   loadDevConfig
 } from './configApi';
 import { KNXGroupAddressModal } from './components/KNXGroupAddressModal';
-import { createApartmentDraft, ensureUniqueSlug, slugifyApartmentName } from './appModel';
+import { createApartmentDraft, ensureUniqueSlug, migrateLegacyConfig, slugifyApartmentName } from './appModel';
 import {
-  Save, Plus, Lightbulb, FileText, Plug, Building2, Home as HomeIcon
+  Save, Plus, Lightbulb, FileText, Plug, Building2, Home as HomeIcon, Download, Upload
 } from 'lucide-react';
 import ConfirmDialog from './components/ConfirmDialog';
 
@@ -95,6 +95,7 @@ export default function Connections({
   const [sharedGroupAddressFileName, setSharedGroupAddressFileName] = useState(
     config.sharedImportedGroupAddressesFileName || ''
   );
+  const configImportInputRef = useRef(null);
 
   useEffect(() => {
     setApartmentName(apartment.name);
@@ -331,6 +332,68 @@ export default function Connections({
       navigateToApartment(newApartment.slug);
     } catch {
       addToast('Failed to create apartment', 'error');
+    }
+  };
+
+  const handleExportConfig = () => {
+    try {
+      const blob = new Blob([JSON.stringify(fullConfig, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const downloadLink = document.createElement('a');
+      const dateStamp = new Date().toISOString().slice(0, 10);
+
+      downloadLink.href = url;
+      downloadLink.download = `knx-control-config-${dateStamp}.json`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      URL.revokeObjectURL(url);
+      addToast('Config exported', 'success');
+    } catch {
+      addToast('Failed to export config', 'error');
+    }
+  };
+
+  const handleImportConfigClick = () => {
+    configImportInputRef.current?.click();
+  };
+
+  const handleImportConfigFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const fileText = await file.text();
+      const parsed = JSON.parse(fileText);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Invalid config format');
+      }
+
+      const confirmed = await requestConfirm({
+        title: 'Import Full Config',
+        message: 'Importing a config replaces your current apartments, areas, rooms, addresses, slugs and connection settings. Continue?',
+        confirmLabel: 'Import Config',
+        danger: true,
+      });
+
+      if (!confirmed) {
+        event.target.value = '';
+        return;
+      }
+
+      const nextConfig = migrateLegacyConfig(parsed);
+      await persistConfig(nextConfig);
+
+      const importedApartments = Array.isArray(nextConfig?.apartments) ? nextConfig.apartments : [];
+      const stillHasCurrentApartment = importedApartments.some((entry) => entry.slug === apartment.slug);
+      const targetSlug = stillHasCurrentApartment ? apartment.slug : importedApartments[0]?.slug;
+      if (targetSlug) navigateToApartment(targetSlug);
+
+      addToast('Config imported successfully', 'success');
+    } catch (error) {
+      addToast(error?.message === 'Invalid config format' ? 'Invalid config file' : 'Failed to import config', 'error');
+    } finally {
+      event.target.value = '';
     }
   };
 
@@ -619,6 +682,32 @@ export default function Connections({
                 <Plus size={16} /> Create Apartment
               </button>
             </div>
+          </SetupCard>
+
+          <SetupCard
+            icon={<FileText size={20} />}
+            title="Full Config Backup"
+            description="Export the complete app state or import it into another instance, including apartments, slugs, KNX, Hue, areas, rooms, scenes and ETS settings."
+            tone="ets-icon"
+          >
+            <input
+              ref={configImportInputRef}
+              type="file"
+              accept=".json,application/json,text/json"
+              style={{ display: 'none' }}
+              onChange={handleImportConfigFile}
+            />
+            <div className="connections-card-actions">
+              <button className="btn-secondary" onClick={handleExportConfig}>
+                <Download size={16} /> Export Full Config
+              </button>
+              <button className="btn-primary" onClick={handleImportConfigClick}>
+                <Upload size={16} /> Import Full Config
+              </button>
+            </div>
+            <p className="connections-card-copy" style={{ marginTop: '0.9rem' }}>
+              Importing a config overwrites the current configuration after confirmation.
+            </p>
           </SetupCard>
         </div>
       </div>

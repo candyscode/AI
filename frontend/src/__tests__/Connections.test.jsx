@@ -34,6 +34,10 @@ const addToast = vi.fn();
 const fetchConfig = vi.fn();
 const applyConfig = vi.fn();
 const navigateToApartment = vi.fn();
+const originalCreateObjectURL = URL.createObjectURL;
+const originalRevokeObjectURL = URL.revokeObjectURL;
+const anchorClick = vi.fn();
+const realCreateElement = document.createElement.bind(document);
 
 const FULL_CONFIG = {
   version: 2,
@@ -96,11 +100,28 @@ function renderConnections(fullConfig = FULL_CONFIG, apartmentSlug = 'wohnung-os
 
 beforeEach(() => {
   vi.clearAllMocks();
+  anchorClick.mockReset();
   api.updateConfig.mockImplementation(async (nextConfig) => ({ success: true, config: nextConfig }));
   api.discoverHueBridge.mockResolvedValue({ success: true, bridges: [{ internalipaddress: '192.168.1.65' }] });
   api.pairHueBridge.mockResolvedValue({ success: true, apiKey: 'new-api-key' });
   api.unpairHueBridge.mockResolvedValue({ success: true });
   api.loadDevConfig.mockResolvedValue({ success: true });
+  URL.createObjectURL = vi.fn(() => 'blob:config');
+  URL.revokeObjectURL = vi.fn();
+  vi.spyOn(document, 'createElement').mockImplementation((tagName) => {
+    if (tagName === 'a') {
+      const anchor = realCreateElement('a');
+      anchor.click = anchorClick;
+      return anchor;
+    }
+    return realCreateElement(tagName);
+  });
+});
+
+afterEach(() => {
+  URL.createObjectURL = originalCreateObjectURL;
+  URL.revokeObjectURL = originalRevokeObjectURL;
+  document.createElement.mockRestore?.();
 });
 
 describe('Connections — multi-apartment setup grouping', () => {
@@ -290,5 +311,63 @@ describe('Connections — apartment management', () => {
 
     expect(navigateToApartment).toHaveBeenCalledWith('wohnung-west-2');
     expect(addToast).toHaveBeenCalledWith('Apartment "Wohnung West" created', 'success');
+  });
+});
+
+describe('Connections — full config backup', () => {
+  it('exports the full config as a downloadable JSON file', async () => {
+    const user = userEvent.setup();
+    renderConnections();
+
+    await user.click(screen.getByRole('button', { name: /export full config/i }));
+
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    expect(anchorClick).toHaveBeenCalledTimes(1);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:config');
+    expect(addToast).toHaveBeenCalledWith('Config exported', 'success');
+  });
+
+  it('imports a full config after confirmation and navigates to the imported apartment', async () => {
+    const user = userEvent.setup();
+    renderConnections();
+
+    const importInput = document.querySelector('input[type="file"][accept*="application/json"]');
+    const importedConfig = {
+      version: 2,
+      building: {
+        sharedAccessApartmentId: 'apartment_99',
+        sharedUsesApartmentImportedGroupAddresses: false,
+        sharedInfos: [],
+        sharedAreas: [],
+        sharedImportedGroupAddresses: [],
+        sharedImportedGroupAddressesFileName: '',
+      },
+      apartments: [
+        {
+          id: 'apartment_99',
+          name: 'Imported Apartment',
+          slug: 'imported-apartment',
+          knxIp: '10.0.0.5',
+          knxPort: 3671,
+          hue: { bridgeIp: '', apiKey: '' },
+          floors: [],
+          areaOrder: [],
+          alarms: [],
+          importedGroupAddresses: [],
+          importedGroupAddressesFileName: '',
+        },
+      ],
+    };
+
+    await user.upload(importInput, new File([JSON.stringify(importedConfig)], 'config.json', { type: 'application/json' }));
+    expect(screen.getByRole('heading', { name: 'Import Full Config' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Import Config' }));
+
+    await waitFor(() => {
+      expect(api.updateConfig).toHaveBeenCalledWith(importedConfig);
+    });
+    expect(navigateToApartment).toHaveBeenCalledWith('imported-apartment');
+    expect(addToast).toHaveBeenCalledWith('Config imported successfully', 'success');
   });
 });
