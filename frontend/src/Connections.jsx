@@ -23,9 +23,9 @@ function StatusPill({ connected, label }) {
   );
 }
 
-function SetupCard({ icon, title, description, children, tone = 'knx-icon' }) {
+function SetupCard({ icon, title, description, children, tone = 'knx-icon', className = '' }) {
   return (
-    <section className="connections-card">
+    <section className={`connections-card ${className}`.trim()}>
       <div className="connections-section-header">
         <div className={`connections-section-icon ${tone}`}>
           {icon}
@@ -442,6 +442,17 @@ export default function Connections({
   const modalAddressBook = groupAddressModal.scope === 'shared' ? sharedGroupAddressBook : apartmentGroupAddressBook;
   const modalFileName = groupAddressModal.scope === 'shared' ? sharedGroupAddressFileName : apartmentGroupAddressFileName;
   const sharedAccessApartmentName = fullConfig.apartments.find((entry) => entry.id === sharedAccessApartmentId)?.name || apartment.name;
+  const isCurrentApartmentSharedAccessSource = apartment.id === sharedAccessApartmentId;
+  const sharedScopeContextCopy = isCurrentApartmentSharedAccessSource
+    ? `Shared access uses ${sharedAccessApartmentName}.`
+    : `Shared access uses ${sharedAccessApartmentName}, not this apartment.`;
+  const sharedXmlToggleCopy = isCurrentApartmentSharedAccessSource
+    ? 'Use this apartment XML for shared browsing.'
+    : `Use ${sharedAccessApartmentName}'s apartment XML for shared browsing.`;
+  const sharedXmlActiveCopy = isCurrentApartmentSharedAccessSource
+    ? `Using ${sharedAccessApartmentName}'s apartment XML for shared browsing.`
+    : `Using ${sharedAccessApartmentName}'s apartment XML for shared browsing.`;
+  const sharedXmlEditable = isCurrentApartmentSharedAccessSource;
 
   return (
     <div className="glass-panel settings-panel connections-page">
@@ -572,7 +583,7 @@ export default function Connections({
             <div className="connections-group-label">Shared Building Setup</div>
             <h3 className="connections-group-title">Shared Areas & Shared Information</h3>
             <p className="connections-group-copy">
-              Use this for KNX group addresses that are not on the current apartment's own line, for example central house values like outside temperature, wind or shared spaces such as garden and garage.
+              This is building-wide setup. Use it for KNX group addresses that do not belong to one apartment only, for example central house values like outside temperature and wind or shared spaces such as garden and garage.
             </p>
           </div>
         </div>
@@ -581,7 +592,7 @@ export default function Connections({
           <SetupCard
             icon={<Building2 size={20} />}
             title="Shared KNX Access"
-            description="Choose which apartment gateway can listen to KNX telegrams from the other/shared line, for example the main line with central building values."
+            description="Choose which apartment gateway can listen to KNX telegrams from the shared or central KNX line. This is a building-wide setting and not tied to the apartment currently selected above."
             tone="knx-icon"
           >
             <div className="connections-grid">
@@ -602,74 +613,114 @@ export default function Connections({
                 </select>
               </div>
             </div>
+            <p className="connections-card-copy" style={{ marginTop: '0.9rem' }}>
+              {sharedScopeContextCopy}
+            </p>
             <div className="connections-card-actions">
-              <StatusPill connected={sharedKnxStatus.connected} label={sharedKnxStatus.connected ? 'Shared KNX connected' : 'Shared KNX offline'} />
+              <StatusPill
+                connected={sharedKnxStatus.connected}
+                label={sharedKnxStatus.connected ? `Shared KNX via ${sharedAccessApartmentName} connected` : `Shared KNX via ${sharedAccessApartmentName} offline`}
+              />
             </div>
           </SetupCard>
 
           <SetupCard
             icon={<FileText size={20} />}
             title="Shared ETS XML"
-            description="Import the ETS export that contains the group addresses from the other/shared KNX line, for example outside temperature, wind, garden or garage."
+            description="Building-wide ETS XML for shared or central KNX group addresses."
             tone="ets-icon"
+            className={!sharedXmlEditable ? 'connections-card--locked' : ''}
           >
-            <div className="settings-field" style={{ marginBottom: '1rem' }}>
-              <label
-                className="settings-toggle-row"
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', cursor: 'pointer' }}
-              >
-                <div>
-                  <div className="settings-field-label" style={{ marginBottom: '0.2rem' }}>Use apartment's ETS XML</div>
-                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-                    Use the current apartment ETS import for shared group-address browsing instead of a separate shared XML.
-                  </div>
+            <p className="connections-card-copy" style={{ marginBottom: '1rem' }}>
+              {sharedScopeContextCopy}
+            </p>
+            {sharedXmlEditable ? (
+              <>
+                <div className="settings-field" style={{ marginBottom: '1rem' }}>
+                  <label
+                    className="settings-toggle-row"
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', cursor: 'pointer' }}
+                  >
+                    <div>
+                      <div className="settings-field-label" style={{ marginBottom: '0.2rem' }}>Use shared access apartment's ETS XML</div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                        {sharedXmlToggleCopy}
+                      </div>
+                    </div>
+                    <span className="settings-toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={sharedUsesApartmentImportedGroupAddresses}
+                        onChange={(event) => handleSharedApartmentXmlToggle(event.target.checked)}
+                        aria-label="Use shared access apartment's ETS XML"
+                      />
+                      <span className="settings-toggle-slider" />
+                    </span>
+                  </label>
                 </div>
-                <span className="settings-toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={sharedUsesApartmentImportedGroupAddresses}
-                    onChange={(event) => handleSharedApartmentXmlToggle(event.target.checked)}
-                    aria-label="Use apartment's ETS XML"
-                  />
-                  <span className="settings-toggle-slider" />
-                </span>
-              </label>
-            </div>
-            <div className="connections-card-actions">
-              {sharedUsesApartmentImportedGroupAddresses ? (
-                <div className="ets-status-badge">
-                  <div className="ets-status-dot" />
-                  <span>
-                    Using the current apartment ETS XML for shared address browsing.
-                  </span>
-                </div>
-              ) : (
-                <button
-                  className="btn-secondary"
-                  onClick={() => setGroupAddressModal({
-                    open: true,
-                    title: 'Shared ETS XML import',
-                    allowUpload: true,
-                    mode: 'any',
-                    helperText: 'Upload the ETS XML for shared areas and shared information.',
-                    scope: 'shared',
-                  })}
-                >
-                  <FileText size={15} /> Manage Shared ETS XML
-                </button>
-              )}
+                <div className="connections-card-actions">
+                  {sharedUsesApartmentImportedGroupAddresses ? (
+                    <div className="ets-status-badge">
+                      <div className="ets-status-dot" />
+                      <span>
+                        {sharedXmlActiveCopy}
+                      </span>
+                    </div>
+                  ) : (
+                    <button
+                      className="btn-secondary"
+                      onClick={() => setGroupAddressModal({
+                        open: true,
+                        title: 'Shared Building ETS XML import',
+                        allowUpload: true,
+                        mode: 'any',
+                        helperText: `Upload the shared building ETS XML. Shared access currently uses ${sharedAccessApartmentName}.`,
+                        scope: 'shared',
+                      })}
+                    >
+                      <FileText size={15} /> Manage Shared Building ETS XML
+                    </button>
+                  )}
 
-              {!sharedUsesApartmentImportedGroupAddresses && sharedGroupAddressFileName && sharedGroupAddressBook.length > 0 && (
-                <div className="ets-status-badge">
-                  <div className="ets-status-dot" />
-                  <span>
-                    <strong>{sharedGroupAddressFileName}</strong>
-                    {' · '}
-                    <span style={{ color: 'var(--text-secondary)' }}>{sharedSupportedCount} supported addresses</span>
-                  </span>
+                  {!sharedUsesApartmentImportedGroupAddresses && sharedGroupAddressFileName && sharedGroupAddressBook.length > 0 && (
+                    <div className="ets-status-badge">
+                      <div className="ets-status-dot" />
+                      <span>
+                        <strong>{sharedGroupAddressFileName}</strong>
+                        {' · '}
+                        <span style={{ color: 'var(--text-secondary)' }}>{sharedSupportedCount} supported addresses</span>
+                      </span>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            ) : (
+              <div className="connections-stack">
+                <div className="connections-readonly-note">
+                  Edit this in <strong>{sharedAccessApartmentName}</strong> only.
+                </div>
+                {sharedUsesApartmentImportedGroupAddresses ? (
+                  <div className="ets-status-badge">
+                    <div className="ets-status-dot" />
+                    <span>{sharedXmlActiveCopy}</span>
+                  </div>
+                ) : sharedGroupAddressFileName && sharedGroupAddressBook.length > 0 ? (
+                  <div className="ets-status-badge">
+                    <div className="ets-status-dot" />
+                    <span>
+                      <strong>{sharedGroupAddressFileName}</strong>
+                      {' · '}
+                      <span style={{ color: 'var(--text-secondary)' }}>{sharedSupportedCount} supported addresses</span>
+                    </span>
+                  </div>
+                ) : (
+                  <div className="ets-status-badge">
+                    <div className="ets-status-dot" />
+                    <span>No dedicated shared ETS XML configured.</span>
+                  </div>
+                )}
+              </div>
+            )}
           </SetupCard>
         </div>
       </div>

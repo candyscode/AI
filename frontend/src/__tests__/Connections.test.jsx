@@ -38,6 +38,7 @@ const originalCreateObjectURL = URL.createObjectURL;
 const originalRevokeObjectURL = URL.revokeObjectURL;
 const anchorClick = vi.fn();
 const realCreateElement = document.createElement.bind(document);
+const hasTextContent = (matcher) => (_, node) => matcher.test(node?.textContent || '');
 
 const FULL_CONFIG = {
   version: 2,
@@ -136,6 +137,17 @@ describe('Connections — multi-apartment setup grouping', () => {
     expect(screen.queryByRole('button', { name: /save apartment/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /save shared setup/i })).not.toBeInTheDocument();
   });
+
+  it('makes clear that shared ETS setup is building-wide even when another apartment is selected', () => {
+    renderConnections(FULL_CONFIG, 'wohnung-west');
+
+    expect(screen.getByText(/building-wide ets xml for shared or central knx group addresses/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/shared access uses wohnung ost/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/not this apartment/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(hasTextContent(/edit this in wohnung ost only/i)).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('checkbox', { name: /use shared access apartment's ets xml/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /manage shared building ets xml/i })).not.toBeInTheDocument();
+  });
 });
 
 describe('Connections — apartment-specific persistence', () => {
@@ -226,9 +238,9 @@ describe('Connections — shared building setup', () => {
     const user = userEvent.setup();
     renderConnections();
 
-    await user.click(screen.getByRole('button', { name: /manage shared ets xml/i }));
-    expect(screen.getByText('Shared ETS XML import')).toBeInTheDocument();
-    expect(screen.getByText(/shared areas and shared information/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /manage shared building ets xml/i }));
+    expect(screen.getByText('Shared Building ETS XML import')).toBeInTheDocument();
+    expect(screen.getByText(/upload the shared building ets xml/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /import mock xml/i }));
 
@@ -236,7 +248,7 @@ describe('Connections — shared building setup', () => {
       expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
         building: expect.objectContaining({
           sharedImportedGroupAddresses: [expect.objectContaining({ address: '1/2/3', name: 'Imported Address' })],
-          sharedImportedGroupAddressesFileName: 'Shared ETS XML import.xml',
+          sharedImportedGroupAddressesFileName: 'Shared Building ETS XML import.xml',
         }),
         apartments: expect.arrayContaining([
           expect.objectContaining({
@@ -252,13 +264,13 @@ describe('Connections — shared building setup', () => {
     const user = userEvent.setup();
     renderConnections();
 
-    await user.click(screen.getByRole('checkbox', { name: /use apartment's ets xml/i }));
+    await user.click(screen.getByRole('checkbox', { name: /use shared access apartment's ets xml/i }));
     expect(screen.getByText('Use Apartment ETS XML')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Use Apartment XML' }));
 
-    expect(screen.queryByRole('button', { name: /manage shared ets xml/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/using the current apartment ets xml for shared address browsing/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /manage shared building ets xml/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/using wohnung ost's apartment xml for shared browsing/i)).toBeInTheDocument();
 
     await waitFor(() => {
       expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
@@ -269,6 +281,15 @@ describe('Connections — shared building setup', () => {
         }),
       }));
     });
+  });
+
+  it('renders the shared ETS card as read-only when another apartment provides shared access', () => {
+    renderConnections(FULL_CONFIG, 'wohnung-west');
+
+    expect(screen.getAllByText(hasTextContent(/edit this in wohnung ost only/i)).length).toBeGreaterThan(0);
+    expect(screen.getByText(/shared\.xml/i)).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /use shared access apartment's ets xml/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /manage shared building ets xml/i })).not.toBeInTheDocument();
   });
 });
 
