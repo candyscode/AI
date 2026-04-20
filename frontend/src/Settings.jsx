@@ -14,6 +14,7 @@ import CollapsibleRoomCard from './components/CollapsibleRoomCard';
 import GlobalsConfig from './components/GlobalsConfig';
 import ConfirmDialog from './components/ConfirmDialog';
 import { Plus, Search, Lightbulb, Sparkles, Settings as SettingsIcon } from 'lucide-react';
+import { getImportedGroupAddressName } from './groupAddressUtils';
 
 // ── Migration ─────────────────────────────────────────────
 function migrateRooms(inputRooms) {
@@ -39,6 +40,7 @@ function migrateConfig(config) {
 // ── Main Settings ─────────────────────────────────────────
 export default function Settings({ fullConfig, apartment, config, fetchConfig, applyConfig, addToast, hueStatus, sharedHueStatus }) {
   const [floors, setFloors] = useState(() => migrateConfig(config));
+  const floorsRef = useRef(migrateConfig(config));
   const [sharedInfos, setSharedInfos] = useState(() => Array.isArray(config.sharedInfos) ? config.sharedInfos : []);
   const [alarms, setAlarms] = useState(() => Array.isArray(config.alarms) ? config.alarms : []);
   const [activeFloorId, setActiveFloorId] = useState(() => {
@@ -93,9 +95,12 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     danger: false,
   });
   const confirmResolverRef = useRef(null);
+  const persistQueueRef = useRef(Promise.resolve());
 
   useEffect(() => {
-    setFloors(migrateConfig(config));
+    const nextFloors = migrateConfig(config);
+    floorsRef.current = nextFloors;
+    setFloors(nextFloors);
     setSharedInfos(Array.isArray(config.sharedInfos) ? config.sharedInfos : []);
     setAlarms(Array.isArray(config.alarms) ? config.alarms : []);
     setActiveFloorId(migrateConfig(config)[0]?.id || null);
@@ -126,6 +131,12 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     ...floor,
     rooms: Array.isArray(floor.rooms) ? floor.rooms : [],
   }));
+
+  const commitFloorsState = (nextFloors) => {
+    floorsRef.current = nextFloors;
+    setFloors(nextFloors);
+    return nextFloors;
+  };
 
   const buildNextConfig = ({
     nextFloors = floors,
@@ -161,9 +172,16 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
   };
 
   const persistConfig = async (nextConfig) => {
-    const result = await updateConfig(nextConfig);
-    if (result?.config) applyConfig?.(result.config);
-    else await fetchConfig();
+    persistQueueRef.current = persistQueueRef.current
+      .catch(() => {})
+      .then(async () => {
+        const result = await updateConfig(nextConfig);
+        if (result?.config) applyConfig?.(result.config);
+        else await fetchConfig();
+        return result;
+      });
+
+    return persistQueueRef.current;
   };
 
   const closeConfirmDialog = (confirmed = false) => {
@@ -191,8 +209,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
 
   const handleAddFloor = (name, scope = 'apartment') => {
     const newFloor = { id: `floor_${Date.now()}`, name, rooms: [], isShared: scope === 'shared' };
-    const updated = [...floors, newFloor];
-    setFloors(updated);
+    const updated = commitFloorsState([...floorsRef.current, newFloor]);
     setActiveFloorId(newFloor.id);
     saveFloors(updated);
   };
@@ -229,25 +246,23 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
       danger: true,
     });
     if (!confirmed) return;
-    const updated = floors.filter(f => f.id !== floorId);
-    setFloors(updated);
+    const updated = commitFloorsState(floorsRef.current.filter(f => f.id !== floorId));
     if (activeFloorId === floorId) setActiveFloorId(updated[0]?.id || null);
     saveFloors(updated);
   };
 
-  const handleReorderFloors = (reordered) => { setFloors(reordered); saveFloors(reordered); };
+  const handleReorderFloors = (reordered) => { commitFloorsState(reordered); saveFloors(reordered); };
 
   const handleRenameFloor = (floorId, newName) => {
-    const updated = floors.map(f => f.id !== floorId ? f : { ...f, name: newName });
-    setFloors(updated);
+    const updated = commitFloorsState(floorsRef.current.map(f => f.id !== floorId ? f : { ...f, name: newName }));
     saveFloors(updated);
   };
 
   // ── Room helpers ─────────────────────────────────────────
   const updateFloorRooms = (floorId, updater) => {
-    const updated = floors.map(f => f.id !== floorId ? f : { ...f, rooms: updater(f.rooms) });
-    setFloors(updated);
-    return updated;
+    return commitFloorsState(
+      floorsRef.current.map(f => f.id !== floorId ? f : { ...f, rooms: updater(f.rooms) })
+    );
   };
 
   const handleCreateRoom = async () => {
@@ -259,7 +274,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
   };
 
   const handleDeleteRoom = async (floorId, roomId) => {
-    const floor = floors.find(f => f.id === floorId);
+    const floor = floorsRef.current.find(f => f.id === floorId);
     const room = floor?.rooms.find(r => r.id === roomId);
     const confirmed = await requestConfirm({
       title: 'Delete Room',
@@ -277,6 +292,14 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     return updateFloorRooms(floorId, rooms => rooms.map(r => r.id !== roomId ? r : { ...r, ...patch }));
   };
 
+  const persistRoomChanges = async () => {
+    try {
+      await saveFloors();
+    } catch {
+      addToast('Failed to save room changes', 'error');
+    }
+  };
+
   const handleRenameRoom = (floorId, roomId, newName) => {
     const updated = updateFloorRooms(floorId, rooms =>
       rooms.map(r => r.id !== roomId ? r : { ...r, name: newName })
@@ -286,7 +309,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
 
   const handleMoveToFloor = async (roomId, fromFloorId, toFloorId) => {
     let movedRoom = null;
-    let updated = floors.map(f => {
+    let updated = floorsRef.current.map(f => {
       if (f.id === fromFloorId) {
         movedRoom = f.rooms.find(r => r.id === roomId);
         return { ...f, rooms: f.rooms.filter(r => r.id !== roomId) };
@@ -295,37 +318,46 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     });
     if (!movedRoom) return;
     updated = updated.map(f => f.id !== toFloorId ? f : { ...f, rooms: [...f.rooms, movedRoom] });
-    setFloors(updated);
-    try { await saveFloors(updated); addToast(`Moved to ${floors.find(f => f.id === toFloorId)?.name}`, 'success'); }
+    commitFloorsState(updated);
+    try { await saveFloors(updated); addToast(`Moved to ${floorsRef.current.find(f => f.id === toFloorId)?.name}`, 'success'); }
     catch { addToast('Failed to move room', 'error'); }
   };
 
   // ── Scene handlers ───────────────────────────────────────
   const handleAddScene = (floorId, roomId, category = 'light') => {
-    const room = floors.find(f => f.id === floorId)?.rooms.find(r => r.id === roomId);
+    const room = floorsRef.current.find(f => f.id === floorId)?.rooms.find(r => r.id === roomId);
     if (!room) return;
     const used = (room.scenes || []).map(s => s.sceneNumber);
     let n = 1; while (used.includes(n) && n <= 64) n++;
-    updateRoom(floorId, roomId, { scenes: [...(room.scenes || []), { id: Date.now().toString(), name: '', sceneNumber: n, category }] });
+    const updated = updateRoom(floorId, roomId, { scenes: [...(room.scenes || []), { id: Date.now().toString(), name: '', sceneNumber: n, category }] });
+    saveFloors(updated).catch(() => addToast('Failed to save room scenes', 'error'));
   };
 
   const handleDeleteScene = (roomId, sceneId) => {
-    for (const f of floors) {
+    for (const f of floorsRef.current) {
       const room = f.rooms.find(r => r.id === roomId);
-      if (room) { updateRoom(f.id, roomId, { scenes: room.scenes.filter(s => s.id !== sceneId) }); return; }
+      if (room) {
+        const updated = updateRoom(f.id, roomId, { scenes: room.scenes.filter(s => s.id !== sceneId) });
+        saveFloors(updated).catch(() => addToast('Failed to save room scenes', 'error'));
+        return;
+      }
     }
   };
 
-  const handleUpdateScene = (roomId, sceneId, key, val) => {
+  const handleUpdateScene = (roomId, sceneId, key, val, options = {}) => {
     if (key === '_unlinkHue') { handleUnlinkHueScene(roomId, sceneId); return; }
-    for (const f of floors) {
+    for (const f of floorsRef.current) {
       const room = f.rooms.find(r => r.id === roomId);
-      if (room) { updateRoom(f.id, roomId, { scenes: room.scenes.map(s => s.id !== sceneId ? s : { ...s, [key]: val }) }); return; }
+      if (room) {
+        const updated = updateRoom(f.id, roomId, { scenes: room.scenes.map(s => s.id !== sceneId ? s : { ...s, [key]: val }) });
+        if (options.saveImmediately) saveFloors(updated).catch(() => addToast('Failed to save room scenes', 'error'));
+        return;
+      }
     }
   };
 
   const handleGenerateBaseScenes = (floorId, roomId) => {
-    const room = floors.find(f => f.id === floorId)?.rooms.find(r => r.id === roomId);
+    const room = floorsRef.current.find(f => f.id === floorId)?.rooms.find(r => r.id === roomId);
     if (!room) return;
     const existing = room.scenes || [];
     const used = existing.map(s => s.sceneNumber);
@@ -333,7 +365,8 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     if (!used.includes(1)) toAdd.push({ id: `${Date.now()}_1`, name: 'Off', sceneNumber: 1, category: 'light' });
     if (!used.includes(2)) toAdd.push({ id: `${Date.now()}_2`, name: 'Bright', sceneNumber: 2, category: 'light' });
     if (!toAdd.length) { addToast('Base scenes already exist', 'success'); return; }
-    updateRoom(floorId, roomId, { scenes: [...existing, ...toAdd] });
+    const updated = updateRoom(floorId, roomId, { scenes: [...existing, ...toAdd] });
+    saveFloors(updated).catch(() => addToast('Failed to save room scenes', 'error'));
     addToast(`Added ${toAdd.map(s => s.name).join(' & ')}`, 'success');
   };
 
@@ -345,13 +378,14 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     try { await saveFloors(updated); fetchConfig(); } catch { addToast('Failed to add function', 'error'); }
   };
 
-  const handleUpdateFunction = (roomId, funcId, key, val) => {
-    for (const f of floors) {
+  const handleUpdateFunction = (roomId, funcId, key, val, options = {}) => {
+    for (const f of floorsRef.current) {
       const room = f.rooms.find(r => r.id === roomId);
       if (room) {
-        updateFloorRooms(f.id, rooms => rooms.map(r => r.id !== roomId ? r : {
+        const updated = updateFloorRooms(f.id, rooms => rooms.map(r => r.id !== roomId ? r : {
           ...r, functions: r.functions.map(fn => fn.id !== funcId ? fn : { ...fn, [key]: val })
         }));
+        if (options.saveImmediately) saveFloors(updated).catch(() => addToast('Failed to save room functions', 'error'));
         return;
       }
     }
@@ -359,7 +393,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
 
   const handleDeleteFunction = async (roomId, funcId) => {
     let updated;
-    for (const f of floors) {
+    for (const f of floorsRef.current) {
       const room = f.rooms.find(r => r.id === roomId);
       if (room) {
         updated = updateFloorRooms(f.id, rooms => rooms.map(r => r.id !== roomId ? r : {
@@ -372,7 +406,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
   };
 
   // ── Save ─────────────────────────────────────────────────
-  const saveFloors = async (f = floors) => {
+  const saveFloors = async (f = floorsRef.current) => {
     await persistConfig(buildNextConfig({ nextFloors: f }));
   };
 
@@ -398,24 +432,22 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     }
   };
 
-  const handleSave = () => {
-    saveFloors().then(() => addToast('Settings saved', 'success')).catch(() => addToast('Failed to save', 'error'));
-  };
-
   // ── DnD handlers ─────────────────────────────────────────
   const onRoomDragEnd = ({ active, over }) => {
     if (!over || active.id === over.id || !activeFloorId) return;
-    setFloors(prev => prev.map(f => {
+    const updated = floorsRef.current.map(f => {
       if (f.id !== activeFloorId) return f;
       const oi = f.rooms.findIndex(r => r.id === active.id);
       const ni = f.rooms.findIndex(r => r.id === over.id);
       return { ...f, rooms: arrayMove(f.rooms, oi, ni) };
-    }));
+    });
+    commitFloorsState(updated);
+    saveFloors(updated).catch(() => addToast('Failed to save room order', 'error'));
   };
 
   const onFuncDragEnd = ({ active, over }, floorId, roomId) => {
     if (!over || active.id === over.id) return;
-    setFloors(prev => prev.map(f => {
+    const updated = floorsRef.current.map(f => {
       if (f.id !== floorId) return f;
       return { ...f, rooms: f.rooms.map(r => {
         if (r.id !== roomId) return r;
@@ -423,12 +455,14 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
         const ni = r.functions.findIndex(fn => fn.id === over.id);
         return { ...r, functions: arrayMove(r.functions, oi, ni) };
       })};
-    }));
+    });
+    commitFloorsState(updated);
+    saveFloors(updated).catch(() => addToast('Failed to save function order', 'error'));
   };
 
   const onSceneDragEnd = ({ active, over }, floorId, roomId) => {
     if (!over || active.id === over.id) return;
-    setFloors(prev => prev.map(f => {
+    const updated = floorsRef.current.map(f => {
       if (f.id !== floorId) return f;
       return { ...f, rooms: f.rooms.map(r => {
         if (r.id !== roomId) return r;
@@ -436,12 +470,14 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
         const ni = r.scenes.findIndex(s => s.id === over.id);
         return { ...r, scenes: arrayMove(r.scenes, oi, ni) };
       })};
-    }));
+    });
+    commitFloorsState(updated);
+    saveFloors(updated).catch(() => addToast('Failed to save scene order', 'error'));
   };
 
   // ── Hue: Lamp modal ──────────────────────────────────────
   const openHueLampModal = async (roomId, floorId) => {
-    const floor = floors.find((entry) => entry.id === floorId);
+    const floor = floorsRef.current.find((entry) => entry.id === floorId);
     const scope = floor?.isShared ? 'shared' : 'apartment';
     setHueLampModal({ open: true, roomId, floorId, scope }); setHueLampsLoading(true);
     try {
@@ -454,16 +490,17 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
 
   const selectHueLamp = (lamp) => {
     const { roomId, floorId } = hueLampModal;
-    updateFloorRooms(floorId, rooms => rooms.map(r => r.id !== roomId ? r : {
+    const updated = updateFloorRooms(floorId, rooms => rooms.map(r => r.id !== roomId ? r : {
       ...r, functions: [...r.functions, { id: Date.now().toString(), name: lamp.name, originalHueName: lamp.name, type: 'hue', hueLightId: lamp.id, iconType: 'lightbulb' }]
     }));
+    saveFloors(updated).catch(() => addToast('Failed to save Hue lamp', 'error'));
     setHueLampSearch(''); setHueLampModal({ open: false, roomId: null, floorId: null });
     addToast(`Added "${lamp.name}"`, 'success');
   };
 
   // ── Hue: Room modal ──────────────────────────────────────
   const openHueRoomModal = async (roomId, floorId) => {
-    const floor = floors.find((entry) => entry.id === floorId);
+    const floor = floorsRef.current.find((entry) => entry.id === floorId);
     const scope = floor?.isShared ? 'shared' : 'apartment';
     setHueRoomModal({ open: true, roomId, floorId, scope }); setHueRoomsLoading(true);
     try {
@@ -487,7 +524,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
   };
 
   const handleUnlinkHueRoom = async (roomId, floorId) => {
-    const floor = floors.find((entry) => entry.id === floorId);
+    const floor = floorsRef.current.find((entry) => entry.id === floorId);
     const scope = floor?.isShared ? 'shared' : 'apartment';
     try {
       await unlinkHueRoom(roomId, { apartmentId: apartment.id, scope });
@@ -498,7 +535,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
 
   // ── Hue: Scene modal ─────────────────────────────────────
   const openHueSceneModal = async (roomId, sceneId) => {
-    const floor = floors.find((entry) => entry.rooms.some((room) => room.id === roomId));
+    const floor = floorsRef.current.find((entry) => entry.rooms.some((room) => room.id === roomId));
     const scope = floor?.isShared ? 'shared' : 'apartment';
     setHueSceneModal({ open: true, roomId, sceneId, scope }); setHueScenesLoading(true);
     try {
@@ -529,11 +566,11 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
   };
 
   const handleUnlinkHueScene = async (roomId, sceneId) => {
-    const floor = floors.find((entry) => entry.rooms.some((room) => room.id === roomId));
+    const floor = floorsRef.current.find((entry) => entry.rooms.some((room) => room.id === roomId));
     const scope = floor?.isShared ? 'shared' : 'apartment';
     try {
       await unlinkHueScene(sceneId, { apartmentId: apartment.id, scope });
-      for (const f of floors) {
+      for (const f of floorsRef.current) {
         const room = f.rooms.find(r => r.id === roomId);
         if (room) {
           updateRoom(f.id, roomId, { scenes: room.scenes.map(s => s.id !== sceneId ? s : { ...s, hueSceneId: null, hueSceneName: null }) });
@@ -547,7 +584,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
   // ── GA modal ─────────────────────────────────────────────
   const openGroupAddressModal = (options) => {
     const floorScope = options.floorId
-      ? (floors.find((floor) => floor.id === options.floorId)?.isShared ? 'shared' : 'apartment')
+      ? (floorsRef.current.find((floor) => floor.id === options.floorId)?.isShared ? 'shared' : 'apartment')
       : (activeFloor?.isShared ? 'shared' : 'apartment');
     setGroupAddressModal({
       open: true,
@@ -638,15 +675,29 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     }
     if (!roomId) return;
     if (target?.kind === 'field') {
-      handleUpdateFunction(roomId, target.functionId, target.field, groupAddress.address);
+      let updated = null;
+      for (const f of floorsRef.current) {
+        const room = f.rooms.find(r => r.id === roomId);
+        if (room) {
+          updated = updateFloorRooms(f.id, rooms => rooms.map(r => r.id !== roomId ? r : {
+            ...r, functions: r.functions.map(fn => fn.id !== target.functionId ? fn : { ...fn, [target.field]: groupAddress.address })
+          }));
+          break;
+        }
+      }
+      if (updated) {
+        try { await saveFloors(updated); } catch { addToast('Failed to save selected group address', 'error'); }
+      }
       addToast(`Inserted "${groupAddress.name}"`, 'success'); closeGroupAddressModal(); return;
     }
     if (target?.kind === 'sceneGA') {
-      updateRoom(floorId, roomId, { sceneGroupAddress: groupAddress.address });
+      const updated = updateRoom(floorId, roomId, { sceneGroupAddress: groupAddress.address });
+      try { await saveFloors(updated); } catch { addToast('Failed to save selected scene GA', 'error'); }
       addToast(`Selected scene GA "${groupAddress.name}"`, 'success'); closeGroupAddressModal(); return;
     }
     if (target?.kind === 'roomTemperatureGA') {
-      updateRoom(floorId, roomId, { roomTemperatureGroupAddress: groupAddress.address });
+      const updated = updateRoom(floorId, roomId, { roomTemperatureGroupAddress: groupAddress.address });
+      try { await saveFloors(updated); } catch { addToast('Failed to save room temperature GA', 'error'); }
       addToast(`Selected room temperature GA "${groupAddress.name}"`, 'success'); closeGroupAddressModal(); return;
     }
     const newFunction = { id: Date.now().toString(), name: groupAddress.name, type: groupAddress.functionType || 'switch', groupAddress: groupAddress.address };
@@ -662,6 +713,13 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
   const filteredHueLamps = hueLamps.filter(l => l.name.toLowerCase().includes(hueLampSearch.trim().toLowerCase()));
   const filteredHueRooms = hueRooms.filter(r => r.name.toLowerCase().includes(hueRoomSearch.trim().toLowerCase()));
   const filteredHueScenes = hueScenes.filter(s => s.name.toLowerCase().includes(hueSceneSearch.trim().toLowerCase()));
+  const sharedBrowsingGroupAddressBook = sharedUsesApartmentImportedGroupAddresses ? apartmentGroupAddressBook : sharedGroupAddressBook;
+  const resolveApartmentGroupAddressName = (address) => getImportedGroupAddressName(apartmentGroupAddressBook, address);
+  const resolveSharedGroupAddressName = (address) => getImportedGroupAddressName(sharedBrowsingGroupAddressBook, address);
+  const resolveGroupAddressNameForFloor = (floorId, address) => {
+    const floor = floorsRef.current.find((entry) => entry.id === floorId);
+    return floor?.isShared ? resolveSharedGroupAddressName(address) : resolveApartmentGroupAddressName(address);
+  };
 
   return (
     <div className="glass-panel settings-panel">
@@ -709,6 +767,9 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
             saveApartmentAlarms={saveAlarms}
             openGroupAddressModal={openGroupAddressModal}
             requestConfirm={requestConfirm}
+            resolveGroupAddressName={(address, type) => type === 'alarm'
+              ? resolveApartmentGroupAddressName(address)
+              : resolveSharedGroupAddressName(address)}
           />
         </div>
       ) : (
@@ -755,7 +816,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
                   handleDeleteFunction={handleDeleteFunction}
                   handleUpdateFunction={handleUpdateFunction}
                   handleGenerateBaseScenes={handleGenerateBaseScenes}
-                  handleSave={handleSave}
+                  persistRoomChanges={persistRoomChanges}
                   openHueSceneModal={openHueSceneModal}
                   openHueRoomModal={openHueRoomModal}
                   openHueLampModal={openHueLampModal}
@@ -765,6 +826,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
                   onSceneDragEnd={onSceneDragEnd}
                   sensors={sensors}
                   onMoveToFloor={handleMoveToFloor}
+                  resolveGroupAddressName={(address) => resolveGroupAddressNameForFloor(activeFloor.id, address)}
                 />
               ))}
             </SortableContext>

@@ -9,7 +9,7 @@ import {
 import { KNXGroupAddressModal } from './components/KNXGroupAddressModal';
 import { createApartmentDraft, ensureUniqueSlug, migrateLegacyConfig, slugifyApartmentName } from './appModel';
 import {
-  Save, Plus, Lightbulb, FileText, Plug, Building2, Home as HomeIcon, Download, Upload
+  Plus, Lightbulb, FileText, Plug, Building2, Home as HomeIcon, Download, Upload
 } from 'lucide-react';
 import ConfirmDialog from './components/ConfirmDialog';
 
@@ -117,6 +117,18 @@ export default function Connections({
     else await fetchConfig();
   };
 
+  const normalizedPort = Number(port) || 3671;
+  const apartmentSettingsDirty = (
+    apartmentName !== apartment.name ||
+    apartmentSlug !== apartment.slug ||
+    ip !== (config.knxIp || '') ||
+    normalizedPort !== (config.knxPort || 3671)
+  );
+  const sharedSettingsDirty = (
+    sharedAccessApartmentId !== (config.sharedAccessApartmentId || apartment.id) ||
+    sharedUsesApartmentImportedGroupAddresses !== (config.sharedUsesApartmentImportedGroupAddresses === true)
+  );
+
   const buildNextConfig = (overrides = {}) => ({
     ...fullConfig,
     building: {
@@ -138,7 +150,8 @@ export default function Connections({
     })),
   });
 
-  const handleSaveApartment = async () => {
+  const commitApartmentSettings = async () => {
+    if (!apartmentSettingsDirty) return;
     try {
       const baseSlug = slugifyApartmentName(apartmentSlug || apartmentName || apartment.name);
       const uniqueSlug = ensureUniqueSlug(baseSlug, fullConfig.apartments, apartment.id);
@@ -146,26 +159,42 @@ export default function Connections({
         apartmentName,
         apartmentSlug: uniqueSlug,
         ip,
-        port: Number(port),
+        port: normalizedPort,
       }));
       setApartmentSlug(uniqueSlug);
-      addToast('Apartment settings saved', 'success');
     } catch {
       addToast('Failed to save apartment settings', 'error');
     }
   };
 
-  const handleSaveSharedSettings = async () => {
+  const persistSharedSettings = async (overrides = {}) => {
+    const nextSharedAccessApartmentId = overrides.sharedAccessApartmentId ?? sharedAccessApartmentId;
+    const nextSharedUsesApartmentImportedGroupAddresses = overrides.sharedUsesApartmentImportedGroupAddresses
+      ?? sharedUsesApartmentImportedGroupAddresses;
+    const nextSharedGroupAddressBook = nextSharedUsesApartmentImportedGroupAddresses
+      ? []
+      : (overrides.sharedGroupAddressBook ?? sharedGroupAddressBook);
+    const nextSharedGroupAddressFileName = nextSharedUsesApartmentImportedGroupAddresses
+      ? ''
+      : (overrides.sharedGroupAddressFileName ?? sharedGroupAddressFileName);
+
+    if (
+      !sharedSettingsDirty &&
+      nextSharedAccessApartmentId === sharedAccessApartmentId &&
+      nextSharedUsesApartmentImportedGroupAddresses === sharedUsesApartmentImportedGroupAddresses &&
+      nextSharedGroupAddressBook === sharedGroupAddressBook &&
+      nextSharedGroupAddressFileName === sharedGroupAddressFileName
+    ) {
+      return;
+    }
+
     try {
-      const nextSharedGroupAddressBook = sharedUsesApartmentImportedGroupAddresses ? [] : sharedGroupAddressBook;
-      const nextSharedGroupAddressFileName = sharedUsesApartmentImportedGroupAddresses ? '' : sharedGroupAddressFileName;
       await persistConfig(buildNextConfig({
-        sharedAccessApartmentId,
-        sharedUsesApartmentImportedGroupAddresses,
+        sharedAccessApartmentId: nextSharedAccessApartmentId,
+        sharedUsesApartmentImportedGroupAddresses: nextSharedUsesApartmentImportedGroupAddresses,
         sharedGroupAddressBook: nextSharedGroupAddressBook,
         sharedGroupAddressFileName: nextSharedGroupAddressFileName,
       }));
-      addToast('Shared building settings saved', 'success');
     } catch {
       addToast('Failed to save shared building settings', 'error');
     }
@@ -296,11 +325,17 @@ export default function Connections({
   const handleSharedApartmentXmlToggle = async (nextValue) => {
     if (!nextValue) {
       setSharedUsesApartmentImportedGroupAddresses(false);
+      await persistSharedSettings({ sharedUsesApartmentImportedGroupAddresses: false });
       return;
     }
 
     if (sharedGroupAddressBook.length === 0 && !sharedGroupAddressFileName) {
       setSharedUsesApartmentImportedGroupAddresses(true);
+      await persistSharedSettings({
+        sharedUsesApartmentImportedGroupAddresses: true,
+        sharedGroupAddressBook: [],
+        sharedGroupAddressFileName: '',
+      });
       return;
     }
 
@@ -316,6 +351,11 @@ export default function Connections({
     setSharedUsesApartmentImportedGroupAddresses(true);
     setSharedGroupAddressBook([]);
     setSharedGroupAddressFileName('');
+    await persistSharedSettings({
+      sharedUsesApartmentImportedGroupAddresses: true,
+      sharedGroupAddressBook: [],
+      sharedGroupAddressFileName: '',
+    });
   };
 
   const handleCreateApartment = async () => {
@@ -438,25 +478,22 @@ export default function Connections({
             <div className="connections-grid">
               <div className="settings-field">
                 <label className="settings-field-label">Apartment Name</label>
-                <input className="form-input" value={apartmentName} onChange={(event) => setApartmentName(event.target.value)} />
+                <input className="form-input" value={apartmentName} onChange={(event) => setApartmentName(event.target.value)} onBlur={commitApartmentSettings} />
               </div>
               <div className="settings-field">
                 <label className="settings-field-label">URL Slug</label>
-                <input className="form-input" value={apartmentSlug} onChange={(event) => setApartmentSlug(event.target.value)} />
+                <input className="form-input" value={apartmentSlug} onChange={(event) => setApartmentSlug(event.target.value)} onBlur={commitApartmentSettings} />
               </div>
               <div className="settings-field">
                 <label className="settings-field-label">KNX IP Address</label>
-                <input className="form-input" value={ip} placeholder="192.168.1.50" onChange={(event) => setIp(event.target.value)} />
+                <input className="form-input" value={ip} placeholder="192.168.1.50" onChange={(event) => setIp(event.target.value)} onBlur={commitApartmentSettings} />
               </div>
               <div className="settings-field">
                 <label className="settings-field-label">KNX Port</label>
-                <input className="form-input" type="number" value={port} placeholder="3671" onChange={(event) => setPort(event.target.value)} />
+                <input className="form-input" type="number" value={port} placeholder="3671" onChange={(event) => setPort(event.target.value)} onBlur={commitApartmentSettings} />
               </div>
             </div>
             <div className="connections-card-actions">
-              <button className="btn-primary" onClick={handleSaveApartment}>
-                <Save size={16} /> Save Apartment
-              </button>
               <button className="btn-secondary" onClick={handleLoadDevConfig}>Load Dev Config</button>
               <StatusPill connected={knxStatus.connected} label={knxStatus.connected ? 'KNX connected' : 'KNX offline'} />
             </div>
@@ -550,7 +587,15 @@ export default function Connections({
             <div className="connections-grid">
               <div className="settings-field">
                 <label className="settings-field-label">Shared Access via Apartment</label>
-                <select className="form-select" value={sharedAccessApartmentId} onChange={(event) => setSharedAccessApartmentId(event.target.value)}>
+                <select
+                  className="form-select"
+                  value={sharedAccessApartmentId}
+                  onChange={async (event) => {
+                    const nextValue = event.target.value;
+                    setSharedAccessApartmentId(nextValue);
+                    await persistSharedSettings({ sharedAccessApartmentId: nextValue });
+                  }}
+                >
                   {fullConfig.apartments.map((entry) => (
                     <option key={entry.id} value={entry.id}>{entry.name}</option>
                   ))}
@@ -558,9 +603,6 @@ export default function Connections({
               </div>
             </div>
             <div className="connections-card-actions">
-              <button className="btn-primary" onClick={handleSaveSharedSettings}>
-                <Save size={16} /> Save Shared Setup
-              </button>
               <StatusPill connected={sharedKnxStatus.connected} label={sharedKnxStatus.connected ? 'Shared KNX connected' : 'Shared KNX offline'} />
             </div>
           </SetupCard>

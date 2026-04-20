@@ -36,10 +36,35 @@ vi.mock('../components/FloorTabs', () => ({
 }));
 
 vi.mock('../components/CollapsibleRoomCard', () => ({
-  default: ({ room, floorId, handleDeleteRoom }) => (
+  default: ({ room, floorId, handleDeleteRoom, handleAddScene, handleUpdateScene, persistRoomChanges }) => (
     <div data-testid={`room-${room.id}`}>
       <span>{room.name}</span>
       <button onClick={() => handleDeleteRoom?.(floorId, room.id)}>Delete Room</button>
+      <button onClick={() => handleAddScene?.(floorId, room.id, 'shade')}>
+        Add Shade Scene
+      </button>
+      {room.scenes?.[0] && (
+        <button
+          onClick={() => {
+            handleUpdateScene?.(room.id, room.scenes[0].id, 'name', 'Beschattung Abend');
+            persistRoomChanges?.();
+          }}
+        >
+          Simulate Scene Blur Save
+        </button>
+      )}
+      {room.scenes?.length > 1 && (
+        <button
+          onClick={() => {
+            const lastScene = room.scenes[room.scenes.length - 1];
+            handleUpdateScene?.(room.id, lastScene.id, 'name', 'Geschlossen');
+            handleUpdateScene?.(room.id, lastScene.id, 'sceneNumber', 11);
+            persistRoomChanges?.();
+          }}
+        >
+          Edit Last Scene And Save
+        </button>
+      )}
     </div>
   ),
 }));
@@ -95,7 +120,7 @@ const FULL_CONFIG = {
         {
           id: 'east-living',
           name: 'Living',
-          rooms: [{ id: 'room-1', name: 'Living Room', scenes: [], functions: [] }],
+          rooms: [{ id: 'room-1', name: 'Living Room', scenes: [{ id: 'scene-1', name: 'Scene 1', sceneNumber: 1, category: 'shade' }], functions: [] }],
         },
       ],
       areaOrder: ['east-living', 'shared-garden'],
@@ -163,6 +188,93 @@ describe('Settings — merged multi-apartment area view', () => {
     expect(screen.getByText('Living')).toBeInTheDocument();
     expect(screen.getByText('Garden (shared)')).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/Add room to Living/i)).toBeInTheDocument();
+  });
+
+  it('persists the latest scene edit when a field blur triggers auto-save', async () => {
+    const user = userEvent.setup();
+    renderSettings();
+
+    await user.click(screen.getByRole('button', { name: 'Simulate Scene Blur Save' }));
+
+    await waitFor(() => {
+      expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+        apartments: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'apartment_1',
+            floors: expect.arrayContaining([
+              expect.objectContaining({
+                id: 'east-living',
+                rooms: expect.arrayContaining([
+                  expect.objectContaining({
+                    id: 'room-1',
+                    scenes: expect.arrayContaining([
+                      expect.objectContaining({
+                        id: 'scene-1',
+                        name: 'Beschattung Abend',
+                        sceneNumber: 1,
+                      }),
+                    ]),
+                  }),
+                ]),
+              }),
+            ]),
+          }),
+        ]),
+      }));
+    });
+  });
+
+  it('serializes rapid scene saves so the latest shade-scene edit wins', async () => {
+    const user = userEvent.setup();
+    let firstResolve;
+    let secondResolve;
+
+    api.updateConfig
+      .mockImplementationOnce(() => new Promise((resolve) => { firstResolve = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { secondResolve = resolve; }))
+      .mockImplementation(async (nextConfig) => ({ success: true, config: nextConfig }));
+
+    renderSettings();
+
+    await user.click(screen.getByRole('button', { name: 'Add Shade Scene' }));
+    await user.click(screen.getByRole('button', { name: 'Edit Last Scene And Save' }));
+
+    expect(api.updateConfig).toHaveBeenCalledTimes(1);
+
+    firstResolve({ success: true, config: api.updateConfig.mock.calls[0][0] });
+
+    await waitFor(() => {
+      expect(api.updateConfig).toHaveBeenCalledTimes(2);
+    });
+
+    secondResolve({ success: true, config: api.updateConfig.mock.calls[1][0] });
+
+    await waitFor(() => {
+      expect(applyConfig).toHaveBeenLastCalledWith(expect.objectContaining({
+        apartments: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'apartment_1',
+            floors: expect.arrayContaining([
+              expect.objectContaining({
+                id: 'east-living',
+                rooms: expect.arrayContaining([
+                  expect.objectContaining({
+                    id: 'room-1',
+                    scenes: expect.arrayContaining([
+                      expect.objectContaining({
+                        name: 'Geschlossen',
+                        sceneNumber: 11,
+                        category: 'shade',
+                      }),
+                    ]),
+                  }),
+                ]),
+              }),
+            ]),
+          }),
+        ]),
+      }));
+    });
   });
 });
 

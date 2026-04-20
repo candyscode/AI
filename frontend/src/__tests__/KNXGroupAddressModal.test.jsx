@@ -12,6 +12,7 @@ const ADDRESSES = [
   { id: 'temp-space', address: '5/1/4', name: 'Room Temperature Space', functionType: 'temperature', dpt: 'DPT 9.001', room: 'Living Room', supported: true },
   { id: 'temp-plain', address: '5/1/2', name: 'Outside Temperature', functionType: 'temperature', dpt: '9.001', room: 'Outside', supported: true },
   { id: 'temp-dpst', address: '5/1/3', name: 'ETS Room Temperature', functionType: 'temperature', dpt: 'DPST-9-1', room: 'Bedroom', supported: true },
+  { id: 'temp-legacy', address: '5/1/5', name: 'Legacy Shared Temperature', dpt: 'DPST-9-1', room: 'Garage' },
   { id: 'unsupported', address: '9/9/9', name: 'Unsupported', functionType: 'switch', dpt: 'DPT99.999', room: 'Lab', supported: false },
 ];
 
@@ -69,6 +70,7 @@ describe('KNXGroupAddressModal — filtering', () => {
     expect(screen.getByText(/^Room Temperature Space$/i)).toBeInTheDocument();
     expect(screen.getByText(/outside temperature/i)).toBeInTheDocument();
     expect(screen.getByText(/^ETS Room Temperature$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Legacy Shared Temperature$/i)).toBeInTheDocument();
     expect(screen.queryByText(/switch status/i)).not.toBeInTheDocument();
   });
 

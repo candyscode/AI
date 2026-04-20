@@ -11,7 +11,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   ChevronDown, GripVertical, Trash2, Lightbulb, Plus,
-  Save, Search, FileText, HelpCircle, Sparkles, Lock, Pencil
+  Search, FileText, HelpCircle, Sparkles, Lock, Pencil
 } from 'lucide-react';
 import { getSelectOption } from '../iconSelectUtils';
 import { KNXGroupAddressModal } from './KNXGroupAddressModal';
@@ -130,7 +130,21 @@ export function IconSelect({ value, onChange }) {
 }
 
 // ── GAField ───────────────────────────────────────────────
-export function GAField({ label, tooltipKey, optional, value, onChange, placeholder, type = 'text', min, max, onBrowse, browseLabel = 'Search' }) {
+export function GAField({
+  label,
+  tooltipKey,
+  optional,
+  value,
+  onChange,
+  onCommit,
+  placeholder,
+  type = 'text',
+  min,
+  max,
+  onBrowse,
+  browseLabel = 'Search',
+  matchedAddressName = '',
+}) {
   return (
     <div className="settings-field ga-field">
       <label className="settings-field-label">
@@ -146,6 +160,7 @@ export function GAField({ label, tooltipKey, optional, value, onChange, placehol
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
         <input className="form-input" value={value || ''}
           onChange={e => onChange(type === 'number' ? parseInt(e.target.value) : e.target.value)}
+          onBlur={onCommit}
           placeholder={placeholder} type={type} min={min} max={max} />
         {onBrowse && type !== 'number' && (
           <button type="button" className="btn-secondary-sm" onClick={onBrowse} title={browseLabel}>
@@ -153,12 +168,17 @@ export function GAField({ label, tooltipKey, optional, value, onChange, placehol
           </button>
         )}
       </div>
+      {matchedAddressName && (
+        <div style={{ marginTop: '0.4rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+          XML match: <strong style={{ color: 'var(--text-primary)' }}>{matchedAddressName}</strong>
+        </div>
+      )}
     </div>
   );
 }
 
 // ── SortableSceneRow ──────────────────────────────────────
-function SortableSceneRow({ sc, roomId, handleUpdateScene, handleDeleteScene, hueStatus, openHueSceneModal }) {
+function SortableSceneRow({ sc, roomId, handleUpdateScene, handleDeleteScene, hueStatus, openHueSceneModal, persistRoomChanges }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: sc.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
   const isLight = (sc.category || 'light') === 'light';
@@ -173,13 +193,14 @@ function SortableSceneRow({ sc, roomId, handleUpdateScene, handleDeleteScene, hu
         <div className="scene-field">
           <label className="scene-field-label">Name</label>
           <input className="form-input" value={sc.name}
-            onChange={e => handleUpdateScene(roomId, sc.id, 'name', e.target.value)} placeholder="e.g. Off" />
+            onChange={e => handleUpdateScene(roomId, sc.id, 'name', e.target.value)} onBlur={persistRoomChanges} placeholder="e.g. Off" />
         </div>
         <div className="scene-field">
           <label className="scene-field-label">Scene #</label>
           <input className="form-input scene-number-input" type="number" min="1" max="64"
             value={sc.sceneNumber === undefined ? '' : sc.sceneNumber}
             onChange={e => handleUpdateScene(roomId, sc.id, 'sceneNumber', e.target.value === '' ? undefined : parseInt(e.target.value))}
+            onBlur={persistRoomChanges}
             placeholder="1–64" />
         </div>
       </div>
@@ -208,7 +229,7 @@ function SortableSceneRow({ sc, roomId, handleUpdateScene, handleDeleteScene, hu
 }
 
 // ── SortableFunctionCard ──────────────────────────────────
-function SortableFunctionCard({ func, room, handleUpdateFunction, handleDeleteFunction, hueStatus, openGroupAddressModal }) {
+function SortableFunctionCard({ func, room, handleUpdateFunction, handleDeleteFunction, hueStatus, openGroupAddressModal, persistRoomChanges, resolveGroupAddressName }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: func.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   const isHue = func.type === 'hue';
@@ -232,41 +253,43 @@ function SortableFunctionCard({ func, room, handleUpdateFunction, handleDeleteFu
       </div>
       <div className="func-card-body">
         {isHue ? (
-          <div className="settings-field">
-            <label className="settings-field-label">Display Name</label>
-            <input className="form-input" value={func.name}
-              onChange={e => handleUpdateFunction(room.id, func.id, 'name', e.target.value)} placeholder="e.g. Living Room Spot" />
-          </div>
+            <div className="settings-field">
+              <label className="settings-field-label">Display Name</label>
+              <input className="form-input" value={func.name}
+                onChange={e => handleUpdateFunction(room.id, func.id, 'name', e.target.value)} onBlur={persistRoomChanges} placeholder="e.g. Living Room Spot" />
+            </div>
         ) : (
           <>
             <div className="func-fields-row">
               <div className="settings-field func-field-name">
                 <label className="settings-field-label">Name</label>
                 <input className="form-input" value={func.name}
-                  onChange={e => handleUpdateFunction(room.id, func.id, 'name', e.target.value)} placeholder="e.g. Lock Door" />
+                  onChange={e => handleUpdateFunction(room.id, func.id, 'name', e.target.value)} onBlur={persistRoomChanges} placeholder="e.g. Lock Door" />
               </div>
               <div className="settings-field func-field-type">
                 <label className="settings-field-label">Type</label>
-                <TypeSelect value={func.type} onChange={upd('type')} />
+                <TypeSelect value={func.type} onChange={(value) => handleUpdateFunction(room.id, func.id, 'type', value, { saveImmediately: true })} />
               </div>
             </div>
             <div className="func-ga-fields">
-              <GAField label="Action GA" tooltipKey="action" value={func.groupAddress} onChange={upd('groupAddress')} placeholder="e.g. 1/5/0" browseLabel="Search ETS addresses for action GA"
+              <GAField label="Action GA" tooltipKey="action" value={func.groupAddress} onChange={upd('groupAddress')} onCommit={persistRoomChanges} placeholder="e.g. 1/5/0" browseLabel="Search ETS addresses for action GA"
+                matchedAddressName={resolveGroupAddressName?.(func.groupAddress)}
                 onBrowse={() => openGroupAddressModal({ roomId: room.id, title: 'Select group address', mode: func.type === 'scene' ? 'scene' : func.type, target: { kind: 'field', functionId: func.id, field: 'groupAddress' }, helperText: 'Select a compatible ETS group address.' })} />
               {func.type === 'scene' && (
-                <GAField label="Scene Number" tooltipKey="scene" value={func.sceneNumber} onChange={upd('sceneNumber')} placeholder="1–64" type="number" min={1} max={64} />
+                <GAField label="Scene Number" tooltipKey="scene" value={func.sceneNumber} onChange={upd('sceneNumber')} onCommit={persistRoomChanges} placeholder="1–64" type="number" min={1} max={64} />
               )}
               {(func.type === 'switch' || func.type === 'percentage') && (
-                <GAField label="Feedback GA" tooltipKey="feedback" value={func.statusGroupAddress} onChange={upd('statusGroupAddress')} placeholder="e.g. 1/5/1" browseLabel="Search ETS addresses for feedback GA"
+                <GAField label="Feedback GA" tooltipKey="feedback" value={func.statusGroupAddress} onChange={upd('statusGroupAddress')} onCommit={persistRoomChanges} placeholder="e.g. 1/5/1" browseLabel="Search ETS addresses for feedback GA"
+                  matchedAddressName={resolveGroupAddressName?.(func.statusGroupAddress)}
                   onBrowse={() => openGroupAddressModal({ roomId: room.id, title: 'Select group address', mode: func.type, target: { kind: 'field', functionId: func.id, field: 'statusGroupAddress' }, helperText: 'Select a compatible feedback GA.' })} />
               )}
               {func.type === 'switch' && (
                 <div className="settings-field">
                   <label className="settings-field-label">Icon</label>
                   <div className="icon-select-stack">
-                    <IconSelect value={func.iconType || 'lightbulb'} onChange={upd('iconType')} />
+                    <IconSelect value={func.iconType || 'lightbulb'} onChange={(value) => handleUpdateFunction(room.id, func.id, 'iconType', value, { saveImmediately: true })} />
                     <label className="icon-invert-card">
-                      <input type="checkbox" checked={!!func.invertIcon} onChange={e => upd('invertIcon')(e.target.checked)} />
+                      <input type="checkbox" checked={!!func.invertIcon} onChange={e => handleUpdateFunction(room.id, func.id, 'invertIcon', e.target.checked, { saveImmediately: true })} />
                       <div className="icon-invert-copy">
                         <span className="icon-invert-title">Invert icon state</span>
                         <span className="icon-invert-hint">Swap which icon is shown for OFF / ON.</span>
@@ -276,7 +299,8 @@ function SortableFunctionCard({ func, room, handleUpdateFunction, handleDeleteFu
                 </div>
               )}
               {func.type === 'percentage' && (
-                <GAField label="Moving GA" tooltipKey="moving" optional value={func.movingGroupAddress} onChange={upd('movingGroupAddress')} placeholder="e.g. 1/5/2" browseLabel="Search ETS addresses for moving GA"
+                <GAField label="Moving GA" tooltipKey="moving" optional value={func.movingGroupAddress} onChange={upd('movingGroupAddress')} onCommit={persistRoomChanges} placeholder="e.g. 1/5/2" browseLabel="Search ETS addresses for moving GA"
+                  matchedAddressName={resolveGroupAddressName?.(func.movingGroupAddress)}
                   onBrowse={() => openGroupAddressModal({ roomId: room.id, title: 'Select group address', mode: 'percentage', target: { kind: 'field', functionId: func.id, field: 'movingGroupAddress' }, helperText: 'Select a compatible moving GA.' })} />
               )}
             </div>
@@ -293,10 +317,11 @@ function CollapsibleRoomCard({
   handleDeleteRoom, updateRoom, onRenameRoom,
   handleAddScene, handleDeleteScene, handleUpdateScene,
   handleAddFunction, handleDeleteFunction, handleUpdateFunction,
-  handleGenerateBaseScenes, handleSave,
+  handleGenerateBaseScenes, persistRoomChanges,
   openHueSceneModal, openHueRoomModal, openHueLampModal, openGroupAddressModal,
   hueStatus, onFuncDragEnd, onSceneDragEnd, sensors,
   onMoveToFloor,
+  resolveGroupAddressName,
 }) {
   const [expanded, setExpanded] = useState(import.meta.env.MODE === 'test');
   const [renamingRoom, setRenamingRoom] = useState(false);
@@ -393,7 +418,9 @@ function CollapsibleRoomCard({
             <div style={{ marginBottom: '1rem' }}>
               <GAField label="Scene GA" tooltipKey="sceneGA"
                 value={room.sceneGroupAddress || ''}
+                matchedAddressName={resolveGroupAddressName?.(room.sceneGroupAddress)}
                 browseLabel="Search ETS addresses for scene GA"
+                onCommit={persistRoomChanges}
                 onChange={(val) => updateRoom(floorId, room.id, { sceneGroupAddress: val })} placeholder="e.g. 3/5/0"
                 onBrowse={() => openGroupAddressModal({ roomId: room.id, floorId, title: 'Select Scene Group Address', mode: 'scene', target: { kind: 'sceneGA' }, helperText: 'Select a scene or 1-byte value ETS group address.' })} />
             </div>
@@ -402,7 +429,9 @@ function CollapsibleRoomCard({
                 label="Room Temperature GA"
                 tooltipKey="roomTemperature"
                 value={room.roomTemperatureGroupAddress || ''}
+                matchedAddressName={resolveGroupAddressName?.(room.roomTemperatureGroupAddress)}
                 browseLabel="Search ETS addresses for room temperature GA"
+                onCommit={persistRoomChanges}
                 onChange={(val) => updateRoom(floorId, room.id, { roomTemperatureGroupAddress: val })}
                 placeholder="e.g. 4/1/7"
                 onBrowse={() => openGroupAddressModal({
@@ -438,9 +467,9 @@ function CollapsibleRoomCard({
                   <div className="scene-category-header"><h5 className="scene-category-title">Light Scenes</h5></div>
                   <div className="scene-list">
                     {lightScenes.map(sc => (
-                      <SortableSceneRow key={sc.id} sc={sc} roomId={room.id}
+                    <SortableSceneRow key={sc.id} sc={sc} roomId={room.id}
                         handleUpdateScene={handleUpdateScene} handleDeleteScene={handleDeleteScene}
-                        hueStatus={hueStatus} openHueSceneModal={openHueSceneModal} />
+                        hueStatus={hueStatus} openHueSceneModal={openHueSceneModal} persistRoomChanges={persistRoomChanges} />
                     ))}
                   </div>
                   <div className="scene-actions-row">
@@ -458,7 +487,7 @@ function CollapsibleRoomCard({
                     {shadeScenes.map(sc => (
                       <SortableSceneRow key={sc.id} sc={sc} roomId={room.id}
                         handleUpdateScene={handleUpdateScene} handleDeleteScene={handleDeleteScene}
-                        hueStatus={hueStatus} openHueSceneModal={openHueSceneModal} />
+                        hueStatus={hueStatus} openHueSceneModal={openHueSceneModal} persistRoomChanges={persistRoomChanges} />
                     ))}
                   </div>
                   <button className="btn-secondary-sm scene-add-btn" onClick={() => handleAddScene(floorId, room.id, 'shade')}>
@@ -480,7 +509,9 @@ function CollapsibleRoomCard({
                     handleUpdateFunction={handleUpdateFunction}
                     handleDeleteFunction={handleDeleteFunction}
                     hueStatus={hueStatus}
-                    openGroupAddressModal={openGroupAddressModal} />
+                    openGroupAddressModal={openGroupAddressModal}
+                    persistRoomChanges={persistRoomChanges}
+                    resolveGroupAddressName={resolveGroupAddressName} />
                 ))}
               </SortableContext>
             </DndContext>
@@ -502,12 +533,6 @@ function CollapsibleRoomCard({
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-            <button className="btn-primary" style={{ fontSize: '0.85rem', padding: '0.5rem 1.25rem', background: 'var(--success-color)' }}
-              onClick={handleSave}>
-              <Save size={14} /> Save All Changes
-            </button>
-          </div>
         </div>
       )}
     </div>
