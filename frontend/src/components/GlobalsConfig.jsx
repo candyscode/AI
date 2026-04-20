@@ -75,7 +75,7 @@ function ItemSection({
       )}
 
       {items.map((item) => (
-        <div key={item.id} className="function-card" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', paddingRight: '3rem' }}>
+        <div key={item.id} className="function-card" style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap', paddingRight: '3rem' }}>
           <button
             type="button"
             className="icon-btn btn-danger"
@@ -86,7 +86,7 @@ function ItemSection({
             <X size={14} />
           </button>
 
-          <div style={{ padding: '1rem 0 0.5rem 0.5rem' }}>{getCategoryIcon(item.category)}</div>
+          <div style={{ padding: '2.05rem 0 0.5rem 0.5rem' }}>{getCategoryIcon(item.category)}</div>
 
           <div className="settings-field" style={{ flex: 1, minWidth: '180px' }}>
             <label className="settings-field-label">Name</label>

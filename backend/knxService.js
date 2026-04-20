@@ -1,6 +1,33 @@
 const knx = require('knx');
 const DPTLib = require('knx/src/dptlib');
 
+function normalizeDptString(dpt) {
+  const raw = typeof dpt === 'string' ? dpt.trim() : '';
+  if (!raw) return '';
+
+  const compact = raw
+    .toUpperCase()
+    .replace(/\s+/g, '')
+    .replace(/^DPT-?/, '')
+    .replace(/^DPST-?/, 'DPST');
+
+  const dpstMatch = compact.match(/^DPST(\d+)-(\d+)$/);
+  if (dpstMatch) {
+    const [, mainType, subType] = dpstMatch;
+    return `DPT${mainType}.${String(Number(subType)).padStart(3, '0')}`;
+  }
+
+  const dptMatch = compact.match(/^(\d+)(?:[.-](\d+))?$/);
+  if (dptMatch) {
+    const [, mainType, subType] = dptMatch;
+    return subType
+      ? `DPT${mainType}.${String(Number(subType)).padStart(3, '0')}`
+      : `DPT${mainType}`;
+  }
+
+  return raw;
+}
+
 class KnxService {
   constructor(io) {
     this.connection = null;
@@ -72,7 +99,8 @@ class KnxService {
               if (Buffer.isBuffer(value)) {
                 if (dptString) {
                   try {
-                    const dpt = DPTLib.resolve(dptString);
+                    const normalizedDpt = normalizeDptString(dptString);
+                    const dpt = DPTLib.resolve(normalizedDpt);
                     if (dpt) {
                       parsedValue = DPTLib.fromBuffer(value, dpt);
                     }
@@ -198,3 +226,4 @@ class KnxService {
 }
 
 module.exports = KnxService;
+module.exports.normalizeDptString = normalizeDptString;

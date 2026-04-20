@@ -1,3 +1,30 @@
+function normalizeDptString(dpt) {
+  const raw = typeof dpt === 'string' ? dpt.trim() : '';
+  if (!raw) return '';
+
+  const compact = raw
+    .toUpperCase()
+    .replace(/\s+/g, '')
+    .replace(/^DPT-?/, '')
+    .replace(/^DPST-?/, 'DPST');
+
+  const dpstMatch = compact.match(/^DPST(\d+)-(\d+)$/);
+  if (dpstMatch) {
+    const [, mainType, subType] = dpstMatch;
+    return `DPT${mainType}.${String(Number(subType)).padStart(3, '0')}`;
+  }
+
+  const dptMatch = compact.match(/^(\d+)(?:[.-](\d+))?$/);
+  if (dptMatch) {
+    const [, mainType, subType] = dptMatch;
+    return subType
+      ? `DPT${mainType}.${String(Number(subType)).padStart(3, '0')}`
+      : `DPT${mainType}`;
+  }
+
+  return raw;
+}
+
 function normalizeImportedGroupAddresses(addresses) {
   if (!Array.isArray(addresses)) return [];
 
@@ -6,7 +33,7 @@ function normalizeImportedGroupAddresses(addresses) {
     .map((entry) => ({
       address: typeof entry.address === 'string' ? entry.address : '',
       name: typeof entry.name === 'string' ? entry.name : '',
-      dpt: typeof entry.dpt === 'string' ? entry.dpt : '',
+      dpt: normalizeDptString(entry.dpt),
       functionType: typeof entry.functionType === 'string' ? entry.functionType : '',
       supported: entry.supported !== false,
     }))
@@ -65,7 +92,7 @@ function normalizeAlarm(alarm) {
     type: 'alarm',
     category: 'alarm',
     statusGroupAddress: typeof alarm.statusGroupAddress === 'string' ? alarm.statusGroupAddress : '',
-    dpt: typeof alarm.dpt === 'string' ? alarm.dpt : '',
+    dpt: normalizeDptString(alarm.dpt),
   };
 }
 
@@ -79,7 +106,7 @@ function normalizeSharedInfo(info) {
     type: 'info',
     category: typeof info.category === 'string' ? info.category : 'temperature',
     statusGroupAddress: typeof info.statusGroupAddress === 'string' ? info.statusGroupAddress : '',
-    dpt: typeof info.dpt === 'string' ? info.dpt : '',
+    dpt: normalizeDptString(info.dpt),
   };
 }
 
@@ -274,6 +301,7 @@ module.exports = {
   migrateLegacyConfig,
   normalizeConfigShape,
   normalizeImportedGroupAddresses,
+  normalizeDptString,
   normalizeArea,
   normalizeApartment,
   normalizeRoom,

@@ -212,7 +212,7 @@ function buildKnxTrackingMaps(apartmentId) {
       if (!info?.statusGroupAddress) return;
       statusGAs.add(info.statusGroupAddress);
       gaToType[info.statusGroupAddress] = 'info';
-      if (info.dpt) gaToDpt[info.statusGroupAddress] = info.dpt;
+      gaToDpt[info.statusGroupAddress] = info.dpt || 'DPT9.001';
       sharedGaSet.add(info.statusGroupAddress);
     });
 

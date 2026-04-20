@@ -11,6 +11,7 @@ jest.mock('knx');
 
 const knx = require('knx');
 const KnxService = require('../../knxService');
+const DPTLib = require('knx/src/dptlib');
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -278,6 +279,32 @@ describe('KnxService — unit', () => {
 
       const update = io._events.find(e => e.event === 'knx_state_update' && e.data.groupAddress === '2/0/0');
       expect(update.data.value).toBeCloseTo(50, 0);
+    });
+
+    it('parses DPT9 values when the configured DPT uses ETS DPST notation', () => {
+      service.setGaToType({ '1/6/3': 'info' });
+      service.setGaToDpt({ '1/6/3': 'DPST-9-1' });
+      const handlers = connect();
+      const encodedTemperature = DPTLib.resolve('DPT9.001').formatAPDU(23.8);
+
+      handlers.event('GroupValue_Write', null, '1/6/3', encodedTemperature);
+
+      const update = io._events.find(e => e.event === 'knx_state_update' && e.data.groupAddress === '1/6/3');
+      expect(update.data.value).toBeCloseTo(23.8, 1);
+      expect(service.deviceStates['1/6/3']).toBeCloseTo(23.8, 1);
+    });
+
+    it('parses DPT9 wind speed values when the configured DPT contains spaces', () => {
+      service.setGaToType({ '1/6/4': 'info' });
+      service.setGaToDpt({ '1/6/4': 'DPT 9.005' });
+      const handlers = connect();
+      const encodedWind = DPTLib.resolve('DPT9.005').formatAPDU(4.2);
+
+      handlers.event('GroupValue_Write', null, '1/6/4', encodedWind);
+
+      const update = io._events.find(e => e.event === 'knx_state_update' && e.data.groupAddress === '1/6/4');
+      expect(update.data.value).toBeCloseTo(4.2, 1);
+      expect(service.deviceStates['1/6/4']).toBeCloseTo(4.2, 1);
     });
 
     it('calls sceneTriggerCallback for GroupValue_Write on scene GA', () => {
