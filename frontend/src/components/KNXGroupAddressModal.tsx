@@ -19,17 +19,43 @@ function normalizeDptPrefix(value) {
   return subType ? `${mainType}.${subType}` : `${mainType}.`;
 }
 
+function inferFunctionTypeFromAddress(address) {
+  const normalizedDpt = normalizeDptPrefix(address?.dpt);
+  if (address?.functionType) return address.functionType;
+  if (normalizedDpt.startsWith('17.')) return 'scene';
+  if (normalizedDpt.startsWith('1.')) return 'switch';
+  if (normalizedDpt.startsWith('5.')) return 'percentage';
+  if (normalizedDpt.startsWith('9.')) return 'temperature';
+  return null;
+}
+
+function isAddressSupported(address) {
+  const normalizedDpt = normalizeDptPrefix(address?.dpt);
+  const isSupportedDptFamily = (
+    normalizedDpt.startsWith('1.') ||
+    normalizedDpt.startsWith('5.') ||
+    normalizedDpt.startsWith('9.') ||
+    normalizedDpt.startsWith('17.')
+  );
+
+  if (address?.supported === true) return true;
+  if (address?.supported === false) return isSupportedDptFamily;
+  return isSupportedDptFamily || ['switch', 'percentage', 'scene', 'temperature'].includes(inferFunctionTypeFromAddress(address));
+}
+
 function isAddressAllowedForMode(address, mode, dptFilter) {
-  if (!address.supported) return false;
+  if (!isAddressSupported(address)) return false;
+
+  const functionType = inferFunctionTypeFromAddress(address);
   if (dptFilter) {
     const normalizedFilter = normalizeDptPrefix(dptFilter);
     const normalizedAddressDpt = normalizeDptPrefix(address.dpt);
     if (!normalizedAddressDpt || !normalizedAddressDpt.startsWith(normalizedFilter)) return false;
   }
   if (mode === 'any') return true;
-  if (mode === 'scene') return address.functionType === 'scene';
-  if (mode === 'switch') return address.functionType === 'switch';
-  if (mode === 'percentage') return address.functionType === 'percentage';
+  if (mode === 'scene') return functionType === 'scene';
+  if (mode === 'switch') return functionType === 'switch';
+  if (mode === 'percentage') return functionType === 'percentage';
   return true;
 }
 
@@ -68,7 +94,7 @@ export function KNXGroupAddressModal({
   const fileInputRef = useRef(null);
 
   const supportedAddresses = useMemo(
-    () => addresses.filter((address) => address.supported),
+    () => addresses.filter((address) => isAddressSupported(address)),
     [addresses]
   );
   const unsupportedCount = addresses.length - supportedAddresses.length;

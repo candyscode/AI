@@ -9,6 +9,7 @@ function ItemSection({
   saveItems,
   openGroupAddressModal,
   emptyText,
+  resolveGroupAddressName,
 }) {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ name: '', category: 'temperature', statusGroupAddress: '' });
@@ -142,6 +143,11 @@ function ItemSection({
                 <Search size={14} />
               </button>
             </div>
+            {resolveGroupAddressName?.(item.statusGroupAddress || '', type) && (
+              <div style={{ marginTop: '0.4rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                XML match: <strong style={{ color: 'var(--text-primary)' }}>{resolveGroupAddressName(item.statusGroupAddress || '', type)}</strong>
+              </div>
+            )}
           </div>
         </div>
       ))}
@@ -196,6 +202,7 @@ export default function GlobalsConfig({
   saveApartmentAlarms,
   openGroupAddressModal,
   requestConfirm,
+  resolveGroupAddressName,
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -207,6 +214,7 @@ export default function GlobalsConfig({
         saveItems={saveSharedInfos}
         openGroupAddressModal={openGroupAddressModal}
         emptyText="No shared information configured yet."
+        resolveGroupAddressName={resolveGroupAddressName}
       />
 
       <ItemSection
@@ -217,6 +225,7 @@ export default function GlobalsConfig({
         saveItems={saveApartmentAlarms}
         openGroupAddressModal={openGroupAddressModal}
         emptyText="No apartment-specific alarms configured yet."
+        resolveGroupAddressName={resolveGroupAddressName}
       />
     </div>
   );

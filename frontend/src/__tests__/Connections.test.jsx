@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Connections from '../Connections';
 import * as api from '../configApi';
@@ -133,12 +133,13 @@ describe('Connections — multi-apartment setup grouping', () => {
     expect(screen.getByText('Shared Building Setup')).toBeInTheDocument();
     expect(screen.getByText('Manage Apartments')).toBeInTheDocument();
     expect(screen.getByText(/Shared KNX line via Wohnung Ost offline/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /save apartment/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /save shared setup/i })).not.toBeInTheDocument();
   });
 });
 
 describe('Connections — apartment-specific persistence', () => {
-  it('saves only the current apartment identity and gateway settings', async () => {
-    const user = userEvent.setup();
+  it('auto-saves the current apartment identity and gateway settings on blur', async () => {
     renderConnections();
 
     const identityHeading = screen.getByText('Identity & KNX Gateway');
@@ -146,15 +147,11 @@ describe('Connections — apartment-specific persistence', () => {
     const [nameInput, slugInput, ipInput] = within(identityCard).getAllByRole('textbox');
     const portInput = within(identityCard).getByRole('spinbutton');
 
-    await user.clear(nameInput);
-    await user.type(nameInput, 'Wohnung Ost Neu');
-    await user.clear(slugInput);
-    await user.type(slugInput, 'wohn-ost-neu');
-    await user.clear(ipInput);
-    await user.type(ipInput, '192.168.50.10');
-    await user.clear(portInput);
-    await user.type(portInput, '3675');
-    await user.click(screen.getByRole('button', { name: /save apartment/i }));
+    fireEvent.change(nameInput, { target: { value: 'Wohnung Ost Neu' } });
+    fireEvent.change(slugInput, { target: { value: 'wohn-ost-neu' } });
+    fireEvent.change(ipInput, { target: { value: '192.168.50.10' } });
+    fireEvent.change(portInput, { target: { value: '3675' } });
+    fireEvent.blur(portInput);
 
     await waitFor(() => {
       expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
@@ -178,7 +175,7 @@ describe('Connections — apartment-specific persistence', () => {
         ]),
       }));
     });
-    expect(addToast).toHaveBeenCalledWith('Apartment settings saved', 'success');
+    expect(addToast).not.toHaveBeenCalledWith('Apartment settings saved', 'success');
   });
 
   it('opens the apartment ETS modal and persists imported addresses in the apartment scope', async () => {
@@ -209,12 +206,11 @@ describe('Connections — apartment-specific persistence', () => {
 });
 
 describe('Connections — shared building setup', () => {
-  it('saves which apartment provides shared KNX access', async () => {
+  it('auto-saves which apartment provides shared KNX access', async () => {
     const user = userEvent.setup();
     renderConnections();
 
     await user.selectOptions(screen.getByRole('combobox'), 'apartment_2');
-    await user.click(screen.getByRole('button', { name: /save shared setup/i }));
 
     await waitFor(() => {
       expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
@@ -223,7 +219,7 @@ describe('Connections — shared building setup', () => {
         }),
       }));
     });
-    expect(addToast).toHaveBeenCalledWith('Shared building settings saved', 'success');
+    expect(addToast).not.toHaveBeenCalledWith('Shared building settings saved', 'success');
   });
 
   it('opens the shared ETS modal and persists imported addresses in the building scope', async () => {
@@ -263,8 +259,6 @@ describe('Connections — shared building setup', () => {
 
     expect(screen.queryByRole('button', { name: /manage shared ets xml/i })).not.toBeInTheDocument();
     expect(screen.getByText(/using the current apartment ets xml for shared address browsing/i)).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /save shared setup/i }));
 
     await waitFor(() => {
       expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
