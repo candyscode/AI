@@ -2161,6 +2161,11 @@ html { overflow-x: hidden; }
   padding: 1.2rem 1.25rem 1.25rem;
 }
 
+.connections-card--locked {
+  background: rgba(255,255,255,0.015);
+  border-color: rgba(255,255,255,0.06);
+}
+
 .connections-card-body {
   margin-top: 1.15rem;
 }
@@ -2175,6 +2180,20 @@ html { overflow-x: hidden; }
   color: var(--text-secondary);
   font-size: 0.88rem;
   line-height: 1.45;
+}
+
+.connections-readonly-note {
+  padding: 0.9rem 1rem;
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.connections-readonly-note strong {
+  color: var(--text-primary);
 }
 
 .connections-section-header {
