@@ -126,27 +126,27 @@ afterEach(() => {
 });
 
 describe('Connections — multi-apartment setup grouping', () => {
-  it('renders the setup page with apartment, shared, and management groups', () => {
+  it('renders the setup page with apartment, main line, and management groups', () => {
     renderConnections();
 
     expect(screen.getByText('Building Setup')).toBeInTheDocument();
     expect(screen.getByText('Current Apartment')).toBeInTheDocument();
-    expect(screen.getByText('Shared Building Setup')).toBeInTheDocument();
+    expect(screen.getByText('Main Line Setup')).toBeInTheDocument();
     expect(screen.getByText('Manage Apartments')).toBeInTheDocument();
-    expect(screen.getByText(/Shared KNX line via Wohnung Ost offline/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Main Line via Wohnung Ost offline/i).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /save apartment/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /save shared setup/i })).not.toBeInTheDocument();
   });
 
-  it('makes clear that shared ETS setup is building-wide even when another apartment is selected', () => {
+  it('makes clear that main line ETS setup is building-wide even when another apartment is selected', () => {
     renderConnections(FULL_CONFIG, 'wohnung-west');
 
-    expect(screen.getByText(/building-wide ets xml for shared or central knx group addresses/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/shared access uses wohnung ost/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/ets xml for main line and central knx group addresses/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/main line access uses wohnung ost/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/not this apartment/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(hasTextContent(/edit this in wohnung ost only/i)).length).toBeGreaterThan(0);
-    expect(screen.queryByRole('checkbox', { name: /use shared access apartment's ets xml/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /manage shared building ets xml/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /use main line apartment's ets xml/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /manage main line ets xml/i })).not.toBeInTheDocument();
   });
 });
 
@@ -217,8 +217,8 @@ describe('Connections — apartment-specific persistence', () => {
   });
 });
 
-describe('Connections — shared building setup', () => {
-  it('auto-saves which apartment provides shared KNX access', async () => {
+describe('Connections — main line setup', () => {
+  it('auto-saves which apartment provides main line KNX access', async () => {
     const user = userEvent.setup();
     renderConnections();
 
@@ -231,16 +231,16 @@ describe('Connections — shared building setup', () => {
         }),
       }));
     });
-    expect(addToast).not.toHaveBeenCalledWith('Shared building settings saved', 'success');
+    expect(addToast).not.toHaveBeenCalledWith('Main line settings saved', 'success');
   });
 
-  it('opens the shared ETS modal and persists imported addresses in the building scope', async () => {
+  it('opens the main line ETS modal and persists imported addresses in the building scope', async () => {
     const user = userEvent.setup();
     renderConnections();
 
-    await user.click(screen.getByRole('button', { name: /manage shared building ets xml/i }));
-    expect(screen.getByText('Shared Building ETS XML import')).toBeInTheDocument();
-    expect(screen.getByText(/upload the shared building ets xml/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /manage main line ets xml/i }));
+    expect(screen.getByText('Main Line ETS XML import')).toBeInTheDocument();
+    expect(screen.getByText(/upload the ets xml for the main line and central functions/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /import mock xml/i }));
 
@@ -248,7 +248,7 @@ describe('Connections — shared building setup', () => {
       expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
         building: expect.objectContaining({
           sharedImportedGroupAddresses: [expect.objectContaining({ address: '1/2/3', name: 'Imported Address' })],
-          sharedImportedGroupAddressesFileName: 'Shared Building ETS XML import.xml',
+          sharedImportedGroupAddressesFileName: 'Main Line ETS XML import.xml',
         }),
         apartments: expect.arrayContaining([
           expect.objectContaining({
@@ -260,17 +260,17 @@ describe('Connections — shared building setup', () => {
     });
   });
 
-  it('can switch shared browsing to the apartment ETS XML and clears dedicated shared XML after confirmation', async () => {
+  it('can switch main line browsing to the apartment ETS XML and clears dedicated main line XML after confirmation', async () => {
     const user = userEvent.setup();
     renderConnections();
 
-    await user.click(screen.getByRole('checkbox', { name: /use shared access apartment's ets xml/i }));
-    expect(screen.getByText('Use Apartment ETS XML')).toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: /use main line apartment's ets xml/i }));
+    expect(screen.getByText('Use Main Line Apartment ETS XML')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Use Apartment XML' }));
+    await user.click(screen.getByRole('button', { name: 'Use Main Line XML' }));
 
-    expect(screen.queryByRole('button', { name: /manage shared building ets xml/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/using wohnung ost's apartment xml for shared browsing/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /manage main line ets xml/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/using wohnung ost's apartment xml for main line browsing/i)).toBeInTheDocument();
 
     await waitFor(() => {
       expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
@@ -283,13 +283,13 @@ describe('Connections — shared building setup', () => {
     });
   });
 
-  it('renders the shared ETS card as read-only when another apartment provides shared access', () => {
+  it('renders the main line ETS card as read-only when another apartment provides main line access', () => {
     renderConnections(FULL_CONFIG, 'wohnung-west');
 
     expect(screen.getAllByText(hasTextContent(/edit this in wohnung ost only/i)).length).toBeGreaterThan(0);
     expect(screen.getByText(/shared\.xml/i)).toBeInTheDocument();
-    expect(screen.queryByRole('checkbox', { name: /use shared access apartment's ets xml/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /manage shared building ets xml/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /use main line apartment's ets xml/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /manage main line ets xml/i })).not.toBeInTheDocument();
   });
 });
 

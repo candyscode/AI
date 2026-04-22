@@ -196,7 +196,7 @@ export default function Connections({
         sharedGroupAddressFileName: nextSharedGroupAddressFileName,
       }));
     } catch {
-      addToast('Failed to save shared building settings', 'error');
+      addToast('Failed to save main line settings', 'error');
     }
   };
 
@@ -340,9 +340,9 @@ export default function Connections({
     }
 
     const confirmed = await requestConfirm({
-      title: 'Use Apartment ETS XML',
-      message: 'Switching this on removes the dedicated shared ETS XML. Continue?',
-      confirmLabel: 'Use Apartment XML',
+      title: 'Use Main Line Apartment ETS XML',
+      message: 'Switching this on removes the dedicated main line ETS XML. Continue?',
+      confirmLabel: 'Use Main Line XML',
       danger: true,
     });
 
@@ -444,14 +444,14 @@ export default function Connections({
   const sharedAccessApartmentName = fullConfig.apartments.find((entry) => entry.id === sharedAccessApartmentId)?.name || apartment.name;
   const isCurrentApartmentSharedAccessSource = apartment.id === sharedAccessApartmentId;
   const sharedScopeContextCopy = isCurrentApartmentSharedAccessSource
-    ? `Shared access uses ${sharedAccessApartmentName}.`
-    : `Shared access uses ${sharedAccessApartmentName}, not this apartment.`;
+    ? `Main Line access uses ${sharedAccessApartmentName}.`
+    : `Main Line access uses ${sharedAccessApartmentName}, not this apartment.`;
   const sharedXmlToggleCopy = isCurrentApartmentSharedAccessSource
-    ? 'Use this apartment XML for shared browsing.'
-    : `Use ${sharedAccessApartmentName}'s apartment XML for shared browsing.`;
+    ? 'Use this apartment XML for Main Line browsing.'
+    : `Use ${sharedAccessApartmentName}'s apartment XML for Main Line browsing.`;
   const sharedXmlActiveCopy = isCurrentApartmentSharedAccessSource
-    ? `Using ${sharedAccessApartmentName}'s apartment XML for shared browsing.`
-    : `Using ${sharedAccessApartmentName}'s apartment XML for shared browsing.`;
+    ? `Using ${sharedAccessApartmentName}'s apartment XML for Main Line browsing.`
+    : `Using ${sharedAccessApartmentName}'s apartment XML for Main Line browsing.`;
   const sharedXmlEditable = isCurrentApartmentSharedAccessSource;
 
   return (
@@ -461,12 +461,12 @@ export default function Connections({
           <div className="connections-eyebrow">Setup</div>
           <h2 className="connections-page-title">Building Setup</h2>
           <p className="connections-page-copy">
-            Everything for the current apartment, the shared building scope and apartment management in one place.
+            Everything for the current apartment, the Main Line setup and apartment management in one place.
           </p>
         </div>
         <div className="connections-hero-statuses">
           <StatusPill connected={knxStatus.connected} label={`${apartment.name} ${knxStatus.connected ? 'connected' : 'offline'}`} />
-          <StatusPill connected={sharedKnxStatus.connected} label={`Shared KNX line via ${sharedAccessApartmentName} ${sharedKnxStatus.connected ? 'connected' : 'offline'}`} />
+          <StatusPill connected={sharedKnxStatus.connected} label={`Main Line via ${sharedAccessApartmentName} ${sharedKnxStatus.connected ? 'connected' : 'offline'}`} />
         </div>
       </div>
 
@@ -580,10 +580,10 @@ export default function Connections({
       <div className="connections-group">
         <div className="connections-group-header">
           <div>
-            <div className="connections-group-label">Shared Building Setup</div>
-            <h3 className="connections-group-title">Shared Areas & Shared Information</h3>
+            <div className="connections-group-label">Main Line Setup</div>
+            <h3 className="connections-group-title">Main Line Areas & Central Information</h3>
             <p className="connections-group-copy">
-              This is building-wide setup. Use it for KNX group addresses that do not belong to one apartment only, for example central house values like outside temperature and wind or shared spaces such as garden and garage.
+              This is the building-wide KNX setup for the Main Line, central functions and areas such as garden or garage.
             </p>
           </div>
         </div>
@@ -591,13 +591,13 @@ export default function Connections({
         <div className="connections-card-grid connections-card-grid--shared">
           <SetupCard
             icon={<Building2 size={20} />}
-            title="Shared KNX Access"
-            description="Choose which apartment gateway can listen to KNX telegrams from the shared or central KNX line. This is a building-wide setting and not tied to the apartment currently selected above."
+            title="Main Line Access"
+            description="Choose which apartment gateway can listen to KNX telegrams from the Main Line and central KNX functions."
             tone="knx-icon"
           >
             <div className="connections-grid">
               <div className="settings-field">
-                <label className="settings-field-label">Shared Access via Apartment</label>
+                <label className="settings-field-label">Main Line Access via Apartment</label>
                 <select
                   className="form-select"
                   value={sharedAccessApartmentId}
@@ -619,15 +619,15 @@ export default function Connections({
             <div className="connections-card-actions">
               <StatusPill
                 connected={sharedKnxStatus.connected}
-                label={sharedKnxStatus.connected ? `Shared KNX via ${sharedAccessApartmentName} connected` : `Shared KNX via ${sharedAccessApartmentName} offline`}
+                label={sharedKnxStatus.connected ? `Main Line via ${sharedAccessApartmentName} connected` : `Main Line via ${sharedAccessApartmentName} offline`}
               />
             </div>
           </SetupCard>
 
           <SetupCard
             icon={<FileText size={20} />}
-            title="Shared ETS XML"
-            description="Building-wide ETS XML for shared or central KNX group addresses."
+            title="Main Line ETS XML"
+            description="ETS XML for Main Line and central KNX group addresses."
             tone="ets-icon"
             className={!sharedXmlEditable ? 'connections-card--locked' : ''}
           >
@@ -642,7 +642,7 @@ export default function Connections({
                     style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', cursor: 'pointer' }}
                   >
                     <div>
-                      <div className="settings-field-label" style={{ marginBottom: '0.2rem' }}>Use shared access apartment's ETS XML</div>
+                      <div className="settings-field-label" style={{ marginBottom: '0.2rem' }}>Use Main Line apartment's ETS XML</div>
                       <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
                         {sharedXmlToggleCopy}
                       </div>
@@ -652,7 +652,7 @@ export default function Connections({
                         type="checkbox"
                         checked={sharedUsesApartmentImportedGroupAddresses}
                         onChange={(event) => handleSharedApartmentXmlToggle(event.target.checked)}
-                        aria-label="Use shared access apartment's ETS XML"
+                        aria-label="Use Main Line apartment's ETS XML"
                       />
                       <span className="settings-toggle-slider" />
                     </span>
@@ -671,14 +671,14 @@ export default function Connections({
                       className="btn-secondary"
                       onClick={() => setGroupAddressModal({
                         open: true,
-                        title: 'Shared Building ETS XML import',
+                        title: 'Main Line ETS XML import',
                         allowUpload: true,
                         mode: 'any',
-                        helperText: `Upload the shared building ETS XML. Shared access currently uses ${sharedAccessApartmentName}.`,
+                        helperText: `Upload the ETS XML for the Main Line and central functions. Main Line access currently uses ${sharedAccessApartmentName}.`,
                         scope: 'shared',
                       })}
                     >
-                      <FileText size={15} /> Manage Shared Building ETS XML
+                      <FileText size={15} /> Manage Main Line ETS XML
                     </button>
                   )}
 
@@ -716,7 +716,7 @@ export default function Connections({
                 ) : (
                   <div className="ets-status-badge">
                     <div className="ets-status-dot" />
-                    <span>No dedicated shared ETS XML configured.</span>
+                    <span>No dedicated Main Line ETS XML configured.</span>
                   </div>
                 )}
               </div>
