@@ -387,13 +387,13 @@ describe('Settings — custom confirmations', () => {
   });
 });
 
-describe('Settings — shared information and apartment alarms', () => {
-  it('stores new shared information in the building scope only', async () => {
+describe('Settings — central information and apartment alarms', () => {
+  it('stores new central information in the building scope only', async () => {
     const user = userEvent.setup();
     renderSettings();
 
     await user.click(screen.getByRole('button', { name: /global info & alarms/i }));
-    await user.click(screen.getByRole('button', { name: /add shared information/i }));
+    await user.click(screen.getByRole('button', { name: /add central information/i }));
     await user.type(screen.getByPlaceholderText('Name (e.g. Outside Temperature)'), 'Wind');
     await user.click(screen.getByRole('button', { name: /save item/i }));
 
@@ -446,7 +446,7 @@ describe('Settings — shared information and apartment alarms', () => {
     });
   });
 
-  it('uses the apartment ETS XML for shared GA browsing when configured', async () => {
+  it('uses the apartment ETS XML for main line GA browsing when configured', async () => {
     const user = userEvent.setup();
     renderSettings({
       ...FULL_CONFIG,
@@ -464,7 +464,7 @@ describe('Settings — shared information and apartment alarms', () => {
     expect(screen.getByText('count:1')).toBeInTheDocument();
   });
 
-  it('persists the DPT for manually entered shared info GAs when the XML contains a match', async () => {
+  it('persists the DPT for manually entered central information GAs when the XML contains a match', async () => {
     const user = userEvent.setup();
     renderSettings({
       ...FULL_CONFIG,

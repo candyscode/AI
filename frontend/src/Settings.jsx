@@ -421,7 +421,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
       await persistConfig(buildNextConfig({ nextSharedInfos: normalizedInfos }));
       return true;
     } catch {
-      addToast('Failed to save shared information', 'error');
+      addToast('Failed to save central information', 'error');
       return false;
     }
   };
@@ -669,7 +669,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
         ? { ...info, statusGroupAddress: groupAddress.address, dpt: groupAddress.dpt || '' }
         : info);
       const saved = await saveSharedInfos(updatedInfos);
-      if (saved) addToast(`Selected shared GA "${groupAddress.name}"`, 'success');
+      if (saved) addToast(`Selected central GA "${groupAddress.name}"`, 'success');
       closeGroupAddressModal();
       return;
     }
@@ -750,7 +750,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
           </>
         ) : (
           <div style={{ padding: '1rem 1.5rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-            Shared Information & Apartment Alarms
+            Central Information & Apartment Alarms
           </div>
         )}
 
@@ -993,7 +993,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
                 checked={newAreaIsShared}
                 onChange={(event) => setNewAreaIsShared(event.target.checked)}
               />
-              <span>Shared with all apartments</span>
+              <span>Shared area for all apartments</span>
             </label>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem' }}>
               <button className="btn-secondary" onClick={closeAddAreaModal}>Cancel</button>

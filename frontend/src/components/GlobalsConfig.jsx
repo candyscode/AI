@@ -46,7 +46,7 @@ function ItemSection({
 
   const handleDelete = async (id) => {
     const confirmed = await requestConfirm?.({
-      title: type === 'alarm' ? 'Delete Alarm' : 'Delete Shared Information',
+      title: type === 'alarm' ? 'Delete Alarm' : 'Delete Central Information',
       message: 'Delete this item?',
       confirmLabel: 'Delete',
       danger: true,
@@ -64,7 +64,7 @@ function ItemSection({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
         <h4 style={{ margin: 0 }}>{title}</h4>
         <button className="btn-secondary" onClick={() => setAdding(true)}>
-          <Plus size={16} /> {type === 'alarm' ? 'Add Alarm' : 'Add Shared Information'}
+          <Plus size={16} /> {type === 'alarm' ? 'Add Alarm' : 'Add Central Information'}
         </button>
       </div>
 
@@ -128,14 +128,14 @@ function ItemSection({
                 type="button"
                 className="btn-secondary-sm"
                 onClick={() => openGroupAddressModal({
-                  title: type === 'alarm' ? 'Select Alarm Group Address' : 'Select Shared Information Group Address',
+                  title: type === 'alarm' ? 'Select Alarm Group Address' : 'Select Central Information Group Address',
                   mode: 'any',
                   dptFilter: type === 'alarm' ? '1.' : '9.',
                   target: { kind: type === 'alarm' ? 'alarm' : 'sharedInfo', id: item.id },
                   allowUpload: false,
                   helperText: type === 'alarm'
                     ? 'Select a compatible alarm GA matching DPT 1.x.'
-                    : 'Select a compatible shared information GA matching DPT 9.x.',
+                    : 'Select a compatible central information GA matching DPT 9.x.',
                   scope: type === 'alarm' ? 'apartment' : 'shared',
                 })}
                 title="Browse ETS addresses"
@@ -155,7 +155,7 @@ function ItemSection({
       {adding && (
         <div style={{ background: 'var(--glass-bg)', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
           <h4 style={{ margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {type === 'alarm' ? <><AlertTriangle size={16} /> New Alarm</> : <><Info size={16} /> New Shared Information</>}
+            {type === 'alarm' ? <><AlertTriangle size={16} /> New Alarm</> : <><Info size={16} /> New Central Information</>}
           </h4>
           <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
             <input
@@ -207,13 +207,13 @@ export default function GlobalsConfig({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <ItemSection
-        title="Shared Information"
+        title="Central Information"
         items={sharedInfos}
         type="info"
         setItems={setSharedInfos}
         saveItems={saveSharedInfos}
         openGroupAddressModal={openGroupAddressModal}
-        emptyText="No shared information configured yet."
+        emptyText="No central information configured yet."
         resolveGroupAddressName={resolveGroupAddressName}
       />
 
