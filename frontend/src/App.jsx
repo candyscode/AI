@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { io } from 'socket.io-client';
-import { Home, Settings as SettingsIcon, Wifi, WifiOff, Plug } from 'lucide-react';
+import { Home, Settings as SettingsIcon, Wifi, WifiOff, Plug, Bot } from 'lucide-react';
 import Dashboard from './Dashboard';
 import Settings from './Settings';
 import Connections from './Connections';
 import { getConfig, verifyConfigPassword } from './configApi';
+import Automation from './Automation';
 import { buildApartmentPath, buildApartmentView, migrateLegacyConfig, parseAppPath } from './appModel';
 import PasswordDialog from './components/PasswordDialog';
 
@@ -37,7 +38,7 @@ function App() {
     [normalizedConfig, route.apartmentSlug]
   );
   const configProtectionEnabled = normalizedConfig.building?.configProtectionEnabled === true;
-  const isProtectedSection = route.section === 'rooms' || route.section === 'connections';
+  const isProtectedSection = route.section === 'rooms' || route.section === 'connections' || route.section === 'automation';
   const isConfigLocked = configProtectionEnabled && isProtectedSection && !configUnlocked;
   const shouldMaskProtectedSection = isProtectedSection && (!configReady || isConfigLocked);
   const canRenderProtectedSection = !isProtectedSection || (configReady && (!configProtectionEnabled || configUnlocked));
@@ -352,6 +353,14 @@ function App() {
             >
               <Plug size={18} /><span className="nav-link-text"> Setup</span>
             </button>
+            <button
+              id="nav-automation"
+              className={`nav-link ${route.section === 'automation' ? 'active' : ''}`}
+              onClick={() => apartment && navigateTo(apartment.slug, 'automation')}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.95rem' }}
+            >
+              <Bot size={18} /><span className="nav-link-text"> Automation</span>
+            </button>
           </nav>
         </div>
       </header>
@@ -402,6 +411,16 @@ function App() {
             onConfigLockRemoved={() => persistConfigUnlocked(false)}
           />
         )}
+
+        {apartment && apartmentConfig && route.section === 'automation' && canRenderProtectedSection && (
+          <Automation
+            apartment={apartment}
+            config={apartmentConfig}
+            fetchConfig={fetchConfig}
+            applyConfig={applyConfig}
+            addToast={addToast}
+          />
+        )}
       </main>
 
       <div className="toast-container">
@@ -416,7 +435,7 @@ function App() {
       <PasswordDialog
         isOpen={isConfigLocked}
         title="Configuration Password"
-        message={`Enter the house configuration password to open ${route.section === 'rooms' ? 'Rooms' : 'Setup'}.`}
+        message={`Enter the house configuration password to open ${route.section === 'rooms' ? 'Rooms' : route.section === 'connections' ? 'Setup' : 'Automation'}.`}
         value={configPasswordValue}
         onChange={(nextValue) => {
           setConfigPasswordValue(nextValue);
