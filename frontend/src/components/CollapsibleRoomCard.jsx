@@ -11,7 +11,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   ChevronDown, GripVertical, Trash2, Lightbulb, Plus,
-  Search, FileText, HelpCircle, Sparkles, Lock, Pencil
+  FileText, HelpCircle, Sparkles, Lock, Pencil
 } from 'lucide-react';
 import { getSelectOption } from '../iconSelectUtils';
 import { KNXGroupAddressModal } from './KNXGroupAddressModal';
@@ -142,7 +142,7 @@ export function GAField({
   min,
   max,
   onBrowse,
-  browseLabel = 'Search',
+  browseLabel = 'Browse ETS addresses',
   matchedAddressName = '',
 }) {
   return (
@@ -157,14 +157,14 @@ export function GAField({
           </span>
         )}
       </label>
-      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+      <div className="ga-field-input-row">
         <input className="form-input" value={value || ''}
           onChange={e => onChange(type === 'number' ? parseInt(e.target.value) : e.target.value)}
           onBlur={onCommit}
           placeholder={placeholder} type={type} min={min} max={max} />
         {onBrowse && type !== 'number' && (
-          <button type="button" className="btn-secondary-sm" onClick={onBrowse} title={browseLabel}>
-            <Search size={14} />
+          <button type="button" className="btn-secondary-sm ga-browse-btn" onClick={onBrowse} title={browseLabel}>
+            Browse
           </button>
         )}
       </div>
