@@ -11,6 +11,7 @@ import {
 } from './configApi';
 import { KNXGroupAddressModal } from './components/KNXGroupAddressModal';
 import { createApartmentDraft, ensureUniqueSlug, migrateLegacyConfig, slugifyApartmentName } from './appModel';
+import { getImportedGroupAddressName } from './groupAddressUtils';
 import {
   Plus, Lightbulb, FileText, Plug, Building2, Home as HomeIcon, Download, Upload, Settings as SettingsIcon, Sun
 } from 'lucide-react';
@@ -179,16 +180,38 @@ export default function Connections({
     })),
   });
 
-  const commitApartmentSettings = async () => {
-    if (!apartmentSettingsDirty) return;
+  const commitApartmentSettings = async (overrides = {}) => {
+    const nextApartmentName = overrides.apartmentName ?? apartmentName;
+    const nextApartmentSlugInput = overrides.apartmentSlug ?? apartmentSlug;
+    const nextIp = overrides.ip ?? ip;
+    const nextPort = overrides.port ?? normalizedPort;
+    const nextSunTriggerGa = overrides.sunTriggerGa ?? sunTriggerGa;
+    const nextSunTriggerBus = overrides.sunTriggerBus ?? sunTriggerBus;
+    const nextSunTriggerDayValue = overrides.sunTriggerDayValue ?? sunTriggerDayValue;
+
+    const hasChanges = (
+      nextApartmentName !== apartment.name ||
+      nextApartmentSlugInput !== apartment.slug ||
+      nextIp !== (config.knxIp || '') ||
+      nextPort !== (config.knxPort || 3671) ||
+      nextSunTriggerGa !== (config.sunTrigger?.groupAddress || '') ||
+      nextSunTriggerBus !== (config.sunTrigger?.bus || 'apartment') ||
+      nextSunTriggerDayValue !== (config.sunTrigger?.dayValue ?? 1)
+    );
+
+    if (!hasChanges && !apartmentSettingsDirty) return;
+
     try {
-      const baseSlug = slugifyApartmentName(apartmentSlug || apartmentName || apartment.name);
+      const baseSlug = slugifyApartmentName(nextApartmentSlugInput || nextApartmentName || apartment.name);
       const uniqueSlug = ensureUniqueSlug(baseSlug, fullConfig.apartments, apartment.id);
       await persistConfig(buildNextConfig({
-        apartmentName,
+        apartmentName: nextApartmentName,
         apartmentSlug: uniqueSlug,
-        ip,
-        port: normalizedPort,
+        ip: nextIp,
+        port: nextPort,
+        sunTriggerGa: nextSunTriggerGa,
+        sunTriggerBus: nextSunTriggerBus,
+        sunTriggerDayValue: nextSunTriggerDayValue,
       }));
       setApartmentSlug(uniqueSlug);
     } catch {
@@ -515,6 +538,7 @@ export default function Connections({
   const sharedSupportedCount = sharedGroupAddressBook.filter((entry) => entry.supported).length;
   const modalAddressBook = groupAddressModal.scope === 'shared' ? sharedGroupAddressBook : apartmentGroupAddressBook;
   const modalFileName = groupAddressModal.scope === 'shared' ? sharedGroupAddressFileName : apartmentGroupAddressFileName;
+  const sharedAccessApartment = fullConfig.apartments.find((entry) => entry.id === sharedAccessApartmentId) || apartment;
   const sharedAccessApartmentName = fullConfig.apartments.find((entry) => entry.id === sharedAccessApartmentId)?.name || apartment.name;
   const isCurrentApartmentSharedAccessSource = apartment.id === sharedAccessApartmentId;
   const sharedScopeContextCopy = isCurrentApartmentSharedAccessSource
@@ -527,6 +551,14 @@ export default function Connections({
     ? `Using ${sharedAccessApartmentName}'s apartment XML for Main Line browsing.`
     : `Using ${sharedAccessApartmentName}'s apartment XML for Main Line browsing.`;
   const sharedXmlEditable = isCurrentApartmentSharedAccessSource;
+  const sunTriggerAddressBook = sunTriggerBus === 'main'
+    ? (
+      sharedUsesApartmentImportedGroupAddresses
+        ? (Array.isArray(sharedAccessApartment?.importedGroupAddresses) ? sharedAccessApartment.importedGroupAddresses : [])
+        : sharedGroupAddressBook
+    )
+    : apartmentGroupAddressBook;
+  const sunTriggerMatchedAddressName = getImportedGroupAddressName(sunTriggerAddressBook, sunTriggerGa);
 
   return (
     <div className="glass-panel settings-panel connections-page">
@@ -649,70 +681,6 @@ export default function Connections({
             )}
           </SetupCard>
 
-          <SetupCard
-            icon={<Sun size={20} />}
-            title="Sunrise / Sunset Trigger"
-            description="Listen to a Day/Night group address to run routines at sunrise or sunset."
-            tone="knx-icon"
-          >
-            <div className="connections-grid">
-              <div className="settings-field">
-                <label className="settings-field-label">Group Address (DPT 1)</label>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <input
-                    className="form-input"
-                    value={sunTriggerGa}
-                    placeholder="e.g. 7/0/0"
-                    onChange={(event) => setSunTriggerGa(event.target.value)}
-                    onBlur={commitApartmentSettings}
-                    style={{ flex: 1 }}
-                  />
-                  <button
-                    className="btn-secondary"
-                    onClick={() => setGroupAddressModal({
-                      open: true,
-                      title: 'Pick Sun Trigger GA',
-                      allowUpload: false,
-                      mode: 'any',
-                      helperText: 'Select the Day/Night status address',
-                      scope: sunTriggerBus === 'main' ? 'shared' : 'apartment',
-                      targetField: 'sunTriggerGa'
-                    })}
-                  >
-                    Browse
-                  </button>
-                </div>
-              </div>
-              <div className="settings-field">
-                <label className="settings-field-label">Line / Bus</label>
-                <select
-                  className="form-input"
-                  value={sunTriggerBus}
-                  onChange={(e) => {
-                    setSunTriggerBus(e.target.value);
-                    setTimeout(commitApartmentSettings, 0); // commit after render
-                  }}
-                >
-                  <option value="apartment">Apartment XML</option>
-                  <option value="main">Main Line XML</option>
-                </select>
-              </div>
-              <div className="settings-field">
-                <label className="settings-field-label">Value for 'Day'</label>
-                <select
-                  className="form-input"
-                  value={sunTriggerDayValue}
-                  onChange={(e) => {
-                    setSunTriggerDayValue(Number(e.target.value));
-                    setTimeout(commitApartmentSettings, 0);
-                  }}
-                >
-                  <option value={1}>1 = Day, 0 = Night</option>
-                  <option value={0}>0 = Day, 1 = Night</option>
-                </select>
-              </div>
-            </div>
-          </SetupCard>
         </div>
       </div>
 
@@ -720,9 +688,9 @@ export default function Connections({
         <div className="connections-group-header">
           <div>
             <div className="connections-group-label">Main Line Setup</div>
-            <h3 className="connections-group-title">Main Line Areas & Central Information</h3>
+            <h3 className="connections-group-title">Main Line & Central Function Configuration</h3>
             <p className="connections-group-copy">
-              This is the building-wide KNX setup for the Main Line, central functions and areas such as garden or garage.
+              Building-wide setup for Main Line group addresses, central information and automation triggers for spaces like garden or garage.
             </p>
           </div>
         </div>
@@ -860,6 +828,78 @@ export default function Connections({
                 )}
               </div>
             )}
+          </SetupCard>
+
+          <SetupCard
+            icon={<Sun size={20} />}
+            title="Sunrise / Sunset Trigger"
+            description="Listen to a Day/Night group address to run routines at sunrise or sunset."
+            tone="knx-icon"
+          >
+            <div className="connections-grid">
+              <div className="settings-field">
+                <label className="settings-field-label">Line / Bus</label>
+                <select
+                  className="form-input"
+                  value={sunTriggerBus}
+                  onChange={(e) => {
+                    const nextBus = e.target.value;
+                    setSunTriggerBus(nextBus);
+                    void commitApartmentSettings({ sunTriggerBus: nextBus });
+                  }}
+                >
+                  <option value="apartment">Apartment XML</option>
+                  <option value="main">Main Line XML</option>
+                </select>
+              </div>
+              <div className="settings-field">
+                <label className="settings-field-label">Day / Night Group Address</label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input
+                    className="form-input"
+                    value={sunTriggerGa}
+                    placeholder="e.g. 7/0/0"
+                    onChange={(event) => setSunTriggerGa(event.target.value)}
+                    onBlur={(event) => void commitApartmentSettings({ sunTriggerGa: event.target.value })}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    className="btn-secondary"
+                    onClick={() => setGroupAddressModal({
+                      open: true,
+                      title: 'Pick Sun Trigger GA',
+                      allowUpload: false,
+                      mode: 'any',
+                      helperText: 'Select the Day/Night status address',
+                      scope: sunTriggerBus === 'main' ? 'shared' : 'apartment',
+                      targetField: 'sunTriggerGa'
+                    })}
+                  >
+                    Browse
+                  </button>
+                </div>
+                {sunTriggerMatchedAddressName && (
+                  <div style={{ marginTop: '0.4rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                    XML match: <strong style={{ color: 'var(--text-primary)' }}>{sunTriggerMatchedAddressName}</strong>
+                  </div>
+                )}
+              </div>
+              <div className="settings-field">
+                <label className="settings-field-label">Value for 'Day'</label>
+                <select
+                  className="form-input"
+                  value={sunTriggerDayValue}
+                  onChange={(e) => {
+                    const nextDayValue = Number(e.target.value);
+                    setSunTriggerDayValue(nextDayValue);
+                    void commitApartmentSettings({ sunTriggerDayValue: nextDayValue });
+                  }}
+                >
+                  <option value={1}>1 = Day, 0 = Night</option>
+                  <option value={0}>0 = Day, 1 = Night</option>
+                </select>
+              </div>
+            </div>
           </SetupCard>
         </div>
       </div>
@@ -1017,7 +1057,7 @@ export default function Connections({
         onSelect={(ga) => {
           if (groupAddressModal.targetField === 'sunTriggerGa') {
             setSunTriggerGa(ga.address);
-            setTimeout(commitApartmentSettings, 0); // Trigger save after state update
+            void commitApartmentSettings({ sunTriggerGa: ga.address });
             setGroupAddressModal((prev) => ({ ...prev, open: false }));
           }
         }}

@@ -84,6 +84,7 @@ describe('appModel migration and view building', () => {
           ],
           areaOrder: ['shared-garden', 'private-sleeping', 'private-living'],
           alarms: [{ id: 'alarm-1', name: 'Rain Alarm', type: 'alarm', category: 'alarm' }],
+          sunTrigger: { groupAddress: '1/6/0', bus: 'main', dayValue: 1 },
           importedGroupAddresses: [],
           importedGroupAddressesFileName: '',
         },
@@ -105,6 +106,11 @@ describe('appModel migration and view building', () => {
     expect(view.apartmentConfig.alarms).toEqual([
       expect.objectContaining({ name: 'Rain Alarm' }),
     ]);
+    expect(view.apartmentConfig.sunTrigger).toEqual({
+      groupAddress: '1/6/0',
+      bus: 'main',
+      dayValue: 1,
+    });
   });
 });
 
