@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import Settings from '../Settings';
+import Settings, { moveRoomBetweenFloors, reorderRoomsWithinFloor } from '../Settings';
 import * as api from '../configApi';
 import { buildApartmentView } from '../appModel';
 
@@ -275,6 +275,46 @@ describe('Settings — merged multi-apartment area view', () => {
         ]),
       }));
     });
+  });
+});
+
+describe('Settings — room move helpers', () => {
+  it('reorders rooms within one area', () => {
+    const floors = [
+      {
+        id: 'floor-1',
+        rooms: [
+          { id: 'room-a', name: 'A' },
+          { id: 'room-b', name: 'B' },
+          { id: 'room-c', name: 'C' },
+        ],
+      },
+    ];
+
+    const reordered = reorderRoomsWithinFloor(floors, 'floor-1', 'room-a', 'room-c');
+    expect(reordered[0].rooms.map((room) => room.id)).toEqual(['room-b', 'room-c', 'room-a']);
+  });
+
+  it('moves a room into a different area', () => {
+    const floors = [
+      {
+        id: 'floor-1',
+        rooms: [
+          { id: 'room-a', name: 'A' },
+          { id: 'room-b', name: 'B' },
+        ],
+      },
+      {
+        id: 'floor-2',
+        rooms: [
+          { id: 'room-c', name: 'C' },
+        ],
+      },
+    ];
+
+    const moved = moveRoomBetweenFloors(floors, 'room-b', 'floor-2');
+    expect(moved[0].rooms.map((room) => room.id)).toEqual(['room-a']);
+    expect(moved[1].rooms.map((room) => room.id)).toEqual(['room-c', 'room-b']);
   });
 });
 
