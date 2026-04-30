@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const KnxService = require('./knxService');
 const HueService = require('./hueService');
-const { startScheduler, reloadScheduler } = require('./automationScheduler');
+const { startScheduler, reloadScheduler, triggerSunRoutines } = require('./automationScheduler');
 const {
   getAllApartmentRooms,
   getAllSharedRooms,
@@ -88,6 +88,7 @@ function createApartmentEmitter(apartmentId) {
           apartmentId,
           scope: scopeForGa(data.groupAddress),
         });
+        handleSunTrigger(apartmentId, data.groupAddress, data.value);
         return;
       }
 
@@ -347,6 +348,34 @@ function emitAllStatuses(socket) {
       paired: !!context?.hueService?.isPaired,
       bridgeIp: context?.hueService?.bridgeIp || '',
     });
+  }
+}
+
+async function handleSunTrigger(apartmentId, groupAddress, value) {
+  // value is expected to be 1 or 0 for DPT1
+  const numericValue = value === true || value === 1 ? 1 : 0;
+
+  for (const apartment of config.apartments) {
+    if (!apartment.sunTrigger?.groupAddress) continue;
+    
+    // Check if the GA matches
+    if (apartment.sunTrigger.groupAddress !== groupAddress) continue;
+    
+    // Check if the event came from the correct bus
+    const isSharedGa = apartmentContexts.get(apartmentId)?.tracking?.sharedGaSet?.has(groupAddress);
+    const busSource = isSharedGa ? 'main' : 'apartment';
+    if (apartment.sunTrigger.bus !== busSource) continue;
+
+    // Check if it's a sunrise or sunset
+    const isDay = numericValue === apartment.sunTrigger.dayValue;
+    const triggerType = isDay ? 'sunrise' : 'sunset';
+    
+    console.log(`[SunTrigger] Detected ${triggerType} for apartment ${apartment.name} (GA: ${groupAddress}, Value: ${numericValue})`);
+    
+    // Fire the routines for THIS apartment's configuration 
+    // Wait, triggerSunRoutines iterates over ALL apartments because we pass config.
+    // Let's call triggerSunRoutines, it will dispatch to all apartments.
+    await triggerSunRoutines(config, triggerType, apartment.id);
   }
 }
 

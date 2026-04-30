@@ -139,10 +139,15 @@ function normalizeAutomationAction(action) {
 
 function normalizeAutomation(automation) {
   if (!automation || typeof automation !== 'object') return null;
+  const validTriggers = ['time', 'sunrise', 'sunset'];
+  const triggerType = validTriggers.includes(automation.triggerType)
+    ? automation.triggerType
+    : 'time';
   return {
     id: typeof automation.id === 'string' ? automation.id : `automation_${Date.now()}`,
     name: typeof automation.name === 'string' ? automation.name : 'New Routine',
     enabled: automation.enabled !== false,
+    triggerType,
     time: typeof automation.time === 'string' ? automation.time : '08:00',
     frequency: 'daily',
     actions: Array.isArray(automation.actions)
@@ -197,6 +202,11 @@ function normalizeApartment(apartment, index = 0, usedSlugs = new Set()) {
     automations: Array.isArray(apartment?.automations)
       ? apartment.automations.map(normalizeAutomation).filter(Boolean)
       : [],
+    sunTrigger: apartment?.sunTrigger && typeof apartment.sunTrigger === 'object' ? {
+      groupAddress: typeof apartment.sunTrigger.groupAddress === 'string' ? apartment.sunTrigger.groupAddress : '',
+      bus: apartment.sunTrigger.bus === 'main' ? 'main' : 'apartment',
+      dayValue: apartment.sunTrigger.dayValue === 0 ? 0 : 1,
+    } : null,
     importedGroupAddresses: normalizeImportedGroupAddresses(apartment?.importedGroupAddresses),
     importedGroupAddressesFileName: typeof apartment?.importedGroupAddressesFileName === 'string'
       ? apartment.importedGroupAddressesFileName

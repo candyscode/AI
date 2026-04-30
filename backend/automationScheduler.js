@@ -93,6 +93,9 @@ async function tick() {
 
     for (const automation of apartment.automations) {
       if (!automation.enabled) continue;
+      // Only time-based routines are handled by the clock tick
+      const isTimeBased = !automation.triggerType || automation.triggerType === 'time';
+      if (!isTimeBased) continue;
       if (automation.time !== currentHHmm) continue;
 
       const key = `${automation.id}__${currentMinuteKey}`;
@@ -144,8 +147,49 @@ function reloadScheduler() {
   console.log('[Scheduler] Automation scheduler reloaded');
 }
 
+/**
+ * Fire all sun-triggered routines for a given triggerType ('sunrise' | 'sunset').
+ * Called from server.js when a GA value change matches the sunTrigger config.
+ *
+ * @param {object} config - Full config object
+ * @param {string} triggerType - 'sunrise' | 'sunset'
+ * @param {string} firingApartmentId - The apartment whose sunTrigger GA fired
+ */
+async function triggerSunRoutines(config, triggerType, firingApartmentId) {
+  if (!Array.isArray(config?.apartments)) return;
+
+  const currentMinuteKey = getCurrentMinuteKey();
+
+  for (const apartment of config.apartments) {
+    if (apartment.id !== firingApartmentId) continue;
+    if (!Array.isArray(apartment.automations)) continue;
+
+    const sharedAreas = Array.isArray(config.building?.sharedAreas) ? config.building.sharedAreas : [];
+    const allFloors = [
+      ...(Array.isArray(apartment.floors) ? apartment.floors : []),
+      ...sharedAreas,
+    ];
+
+    for (const automation of apartment.automations) {
+      if (!automation.enabled) continue;
+      if (automation.triggerType !== triggerType) continue;
+
+      // Deduplicate: don't fire the same routine twice in the same minute
+      const key = `${automation.id}__${currentMinuteKey}`;
+      if (lastFiredMinute.has(key)) continue;
+      lastFiredMinute.set(key, true);
+
+      console.log(`[Scheduler] Sun trigger (${triggerType}) firing routine "${automation.name}" for "${apartment.name}"`);
+
+      runAutomation(apartment, automation, allFloors).catch((err) => {
+        console.error(`[Scheduler] Sun routine "${automation.name}" failed:`, err);
+      });
+    }
+  }
+}
+
 function stopScheduler() {
   if (tickerHandle) { clearInterval(tickerHandle); tickerHandle = null; }
 }
 
-module.exports = { startScheduler, reloadScheduler, stopScheduler };
+module.exports = { startScheduler, reloadScheduler, stopScheduler, triggerSunRoutines };

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  Pencil, Trash2, Clock, AlertTriangle, CheckCircle, XCircle, Repeat,
+  Pencil, Trash2, Clock, AlertTriangle, CheckCircle, XCircle, Repeat, Sunrise, Sunset
 } from 'lucide-react';
 import ConfirmDialog from './ConfirmDialog';
 
@@ -43,7 +43,7 @@ function isBroken(routine, floors) {
 
 export default function RoutineCard({ routine, floors, onToggle, onEdit, onDelete }) {
   const broken = isBroken(routine, floors);
-  const nextRun = getNextRun(routine.time);
+  const nextRun = (!routine.triggerType || routine.triggerType === 'time') ? getNextRun(routine.time) : null;
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
@@ -92,8 +92,14 @@ export default function RoutineCard({ routine, floors, onToggle, onEdit, onDelet
 
         {/* Meta row */}
         <div className="routine-card-meta">
-          <span className="routine-meta-tag" title="Time">
-            <Clock size={12} /> {routine.time}
+          <span className="routine-meta-tag" title="Trigger">
+            {(!routine.triggerType || routine.triggerType === 'time') ? (
+              <><Clock size={12} /> {routine.time}</>
+            ) : routine.triggerType === 'sunrise' ? (
+              <><Sunrise size={12} /> Sunrise</>
+            ) : (
+              <><Sunset size={12} /> Sunset</>
+            )}
           </span>
           <span className="routine-meta-sep" />
           <span className="routine-meta-tag" title="Frequency">

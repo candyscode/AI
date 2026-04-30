@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { startScheduler, stopScheduler } from '../automationScheduler';
+import { startScheduler, stopScheduler, triggerSunRoutines } from '../automationScheduler';
 
 describe('automationScheduler', () => {
   beforeEach(() => {
@@ -152,5 +152,55 @@ describe('automationScheduler', () => {
     expect(persistStatus).toHaveBeenCalledWith('apt1', 'auto1', expect.objectContaining({
       lastRunStatus: 'error'
     }));
+  });
+
+  describe('triggerSunRoutines', () => {
+    it('fires routines with the matching triggerType for the specified apartment', async () => {
+      const config = {
+        apartments: [
+          {
+            id: 'apt1',
+            name: 'Wohnung 1',
+            automations: [
+              { id: 'a1', triggerType: 'sunrise', enabled: true, actions: [{ id: 'a1' }] },
+              { id: 'a2', triggerType: 'sunset', enabled: true, actions: [{ id: 'a2' }] },
+              { id: 'a3', triggerType: 'sunrise', enabled: false, actions: [{ id: 'a3' }] }, // disabled
+            ],
+            floors: []
+          },
+          {
+            id: 'apt2',
+            name: 'Wohnung 2',
+            automations: [
+              { id: 'b1', triggerType: 'sunrise', enabled: true, actions: [{ id: 'b1' }] },
+            ]
+          }
+        ]
+      };
+
+      const executeAction = vi.fn().mockResolvedValue();
+      const persistStatus = vi.fn().mockResolvedValue();
+
+      // We need to inject our mock functions since triggerSunRoutines uses the ones stored in startScheduler scope
+      startScheduler(() => config, executeAction, persistStatus);
+
+      // Trigger sunrise for apt1
+      await triggerSunRoutines(config, 'sunrise', 'apt1');
+      await vi.advanceTimersByTimeAsync(100); // Wait for async execution
+
+      // Only a1 should have fired (sunrise in apt1, enabled)
+      expect(executeAction).toHaveBeenCalledTimes(1);
+      expect(persistStatus).toHaveBeenCalledWith('apt1', 'a1', expect.any(Object));
+
+      vi.clearAllMocks();
+
+      // Trigger sunset for apt1
+      await triggerSunRoutines(config, 'sunset', 'apt1');
+      await vi.advanceTimersByTimeAsync(100);
+
+      // Only a2 should have fired
+      expect(executeAction).toHaveBeenCalledTimes(1);
+      expect(persistStatus).toHaveBeenCalledWith('apt1', 'a2', expect.any(Object));
+    });
   });
 });

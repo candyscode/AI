@@ -2584,6 +2584,37 @@ html { overflow-x: hidden; }
   transform: translateX(20px);
 }
 
+/* Routine Trigger Selector */
+.routine-trigger-selector {
+  display: flex;
+  background: rgba(255,255,255,0.05);
+  border-radius: 8px;
+  overflow: hidden;
+  padding: 2px;
+  margin-top: 0.5rem;
+}
+.routine-trigger-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.4rem 0.5rem;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+.routine-trigger-btn:hover {
+  background: rgba(255,255,255,0.05);
+  color: var(--text-primary);
+}
+.routine-trigger-btn.active {
+  background: rgba(255,255,255,0.15);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
 /* Meta Info Row */
 .routine-card-meta {
   display: flex;

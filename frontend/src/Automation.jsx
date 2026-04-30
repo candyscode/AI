@@ -99,6 +99,7 @@ export default function Automation({ apartment, config, fetchConfig, applyConfig
         <RoutineModal
           routine={modalState.routine}
           floors={config.floors}
+          sunTriggerConfigured={!!config.sunTrigger?.groupAddress}
           onSave={handleSaveRoutine}
           onClose={() => setModalState({ open: false, routine: null })}
         />
