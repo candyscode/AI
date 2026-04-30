@@ -147,6 +147,7 @@ export function buildApartmentView(config, apartmentSlug) {
       sharedImportedGroupAddressesFileName: normalized.building?.sharedImportedGroupAddressesFileName || '',
       sharedAccessApartmentId: normalized.building?.sharedAccessApartmentId || apartment.id,
       sharedUsesApartmentImportedGroupAddresses: normalized.building?.sharedUsesApartmentImportedGroupAddresses === true,
+      sunTrigger: apartment.sunTrigger || { groupAddress: '', bus: 'apartment', dayValue: 1 },
       automations: Array.isArray(apartment.automations) ? apartment.automations : [],
     },
     sharedAreas,

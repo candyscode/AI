@@ -235,6 +235,50 @@ describe('Connections — apartment-specific persistence', () => {
     expect(addToast).not.toHaveBeenCalledWith('Apartment settings saved', 'success');
   });
 
+  it('persists the sun trigger GA and bus selection without resetting them', async () => {
+    const user = userEvent.setup();
+    renderConnections();
+
+    const sunTriggerCard = screen.getByText('Sunrise / Sunset Trigger').closest('section');
+    const [busSelect] = within(sunTriggerCard).getAllByRole('combobox');
+    await user.selectOptions(busSelect, 'main');
+    const gaInput = within(sunTriggerCard).getByPlaceholderText('e.g. 7/0/0');
+    await user.clear(gaInput);
+    await user.type(gaInput, '1/6/0');
+    fireEvent.blur(gaInput);
+
+    await waitFor(() => {
+      expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+        apartments: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'apartment_1',
+            sunTrigger: expect.objectContaining({
+              groupAddress: '1/6/0',
+              bus: 'main',
+              dayValue: 1,
+            }),
+          }),
+        ]),
+      }));
+    });
+  });
+
+  it('shows the XML match for the sun trigger group address from the selected XML scope', async () => {
+    const user = userEvent.setup();
+    renderConnections();
+
+    const sunTriggerCard = screen.getByText('Sunrise / Sunset Trigger').closest('section');
+    const [busSelect] = within(sunTriggerCard).getAllByRole('combobox');
+    await user.selectOptions(busSelect, 'main');
+
+    const gaInput = within(sunTriggerCard).getByPlaceholderText('e.g. 7/0/0');
+    await user.clear(gaInput);
+    await user.type(gaInput, '1/7/1');
+
+    expect(within(sunTriggerCard).getByText('XML match:')).toBeInTheDocument();
+    expect(within(sunTriggerCard).getByText('Garden Weather')).toBeInTheDocument();
+  });
+
   it('opens the apartment ETS modal and persists imported addresses in the apartment scope', async () => {
     const user = userEvent.setup();
     renderConnections();
