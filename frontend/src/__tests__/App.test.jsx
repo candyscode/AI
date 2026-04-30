@@ -14,6 +14,7 @@ vi.mock('../configApi', () => ({
     version: 2,
     building: {
       sharedAccessApartmentId: 'apartment_1',
+      configProtectionEnabled: false,
       sharedInfos: [],
       sharedAreas: [],
       sharedImportedGroupAddresses: [],
@@ -32,6 +33,9 @@ vi.mock('../configApi', () => ({
       importedGroupAddressesFileName: '',
     }],
   }),
+  verifyConfigPassword: vi.fn().mockResolvedValue({ success: true }),
+  setConfigPassword: vi.fn().mockResolvedValue({ success: true }),
+  removeConfigPassword: vi.fn().mockResolvedValue({ success: true }),
   updateConfig: vi.fn().mockResolvedValue({ success: true }),
   triggerAction: vi.fn().mockResolvedValue({ success: true }),
   triggerHueAction: vi.fn().mockResolvedValue({ success: true }),
@@ -56,6 +60,7 @@ beforeEach(() => {
   resetSocketMock();
   vi.clearAllMocks();
   window.history.replaceState({}, '', '/');
+  window.sessionStorage.clear();
 });
 
 describe('App — rendering', () => {
@@ -94,6 +99,7 @@ describe('App — rendering', () => {
       version: 2,
       building: {
         sharedAccessApartmentId: 'apartment_1',
+        configProtectionEnabled: false,
         sharedInfos: [],
         sharedAreas: [],
         sharedImportedGroupAddresses: [],
@@ -140,6 +146,7 @@ describe('App — rendering', () => {
       version: 2,
       building: {
         sharedAccessApartmentId: 'apartment_1',
+        configProtectionEnabled: false,
         sharedInfos: [],
         sharedAreas: [],
         sharedImportedGroupAddresses: [],
@@ -181,6 +188,89 @@ describe('App — rendering', () => {
 
     expect(window.location.pathname).toBe('/wohnung-west/connections');
     expect(screen.getByText('Building Setup')).toBeInTheDocument();
+  });
+});
+
+describe('App — configuration lock', () => {
+  it('prompts for a password before opening Rooms when config protection is enabled', async () => {
+    const user = userEvent.setup();
+    vi.mocked((await import('../configApi')).getConfig).mockResolvedValueOnce({
+      version: 2,
+      building: {
+        sharedAccessApartmentId: 'apartment_1',
+        configProtectionEnabled: true,
+        sharedInfos: [],
+        sharedAreas: [],
+        sharedImportedGroupAddresses: [],
+        sharedImportedGroupAddressesFileName: '',
+      },
+      apartments: [{
+        id: 'apartment_1',
+        name: 'Wohnung 1',
+        slug: 'wohnung-1',
+        knxIp: '192.168.1.85',
+        knxPort: 3671,
+        hue: { bridgeIp: '', apiKey: '' },
+        floors: [{ id: 'floor-1', name: 'Ground Floor', rooms: [] }],
+        alarms: [],
+        importedGroupAddresses: [],
+        importedGroupAddressesFileName: '',
+      }],
+    });
+
+    await act(async () => { render(<App />); });
+    await user.click(screen.getByRole('button', { name: /rooms/i }));
+
+    expect(screen.getByText('Configuration Password')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /back to dashboard/i })).toBeInTheDocument();
+  });
+
+  it('keeps the lock dialog open on a wrong password and unlocks on a correct one', async () => {
+    const user = userEvent.setup();
+    const api = await import('../configApi');
+    api.getConfig.mockResolvedValueOnce({
+      version: 2,
+      building: {
+        sharedAccessApartmentId: 'apartment_1',
+        configProtectionEnabled: true,
+        sharedInfos: [],
+        sharedAreas: [],
+        sharedImportedGroupAddresses: [],
+        sharedImportedGroupAddressesFileName: '',
+      },
+      apartments: [{
+        id: 'apartment_1',
+        name: 'Wohnung 1',
+        slug: 'wohnung-1',
+        knxIp: '192.168.1.85',
+        knxPort: 3671,
+        hue: { bridgeIp: '', apiKey: '' },
+        floors: [{ id: 'floor-1', name: 'Ground Floor', rooms: [] }],
+        alarms: [],
+        importedGroupAddresses: [],
+        importedGroupAddressesFileName: '',
+      }],
+    });
+    api.verifyConfigPassword
+      .mockResolvedValueOnce({ success: false })
+      .mockResolvedValueOnce({ success: true });
+
+    await act(async () => { render(<App />); });
+    await user.click(screen.getByRole('button', { name: /setup/i }));
+
+    await user.type(screen.getByPlaceholderText(/enter password/i), 'wrong');
+    await user.click(screen.getByRole('button', { name: /^unlock$/i }));
+
+    expect(await screen.findByText(/incorrect password/i)).toBeInTheDocument();
+
+    await user.clear(screen.getByPlaceholderText(/enter password/i));
+    await user.type(screen.getByPlaceholderText(/enter password/i), 'correct');
+    await user.click(screen.getByRole('button', { name: /^unlock$/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByPlaceholderText(/enter password/i)).not.toBeInTheDocument();
+      expect(screen.getByText('Building Setup')).toBeInTheDocument();
+    });
   });
 });
 

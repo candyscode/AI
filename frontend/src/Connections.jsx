@@ -4,14 +4,18 @@ import {
   discoverHueBridge,
   pairHueBridge,
   unpairHueBridge,
-  loadDevConfig
+  loadDevConfig,
+  setConfigPassword,
+  removeConfigPassword,
+  verifyConfigPassword,
 } from './configApi';
 import { KNXGroupAddressModal } from './components/KNXGroupAddressModal';
 import { createApartmentDraft, ensureUniqueSlug, migrateLegacyConfig, slugifyApartmentName } from './appModel';
 import {
-  Plus, Lightbulb, FileText, Plug, Building2, Home as HomeIcon, Download, Upload
+  Plus, Lightbulb, FileText, Plug, Building2, Home as HomeIcon, Download, Upload, Settings as SettingsIcon
 } from 'lucide-react';
 import ConfirmDialog from './components/ConfirmDialog';
+import PasswordDialog from './components/PasswordDialog';
 
 function StatusPill({ connected, label }) {
   return (
@@ -53,6 +57,9 @@ export default function Connections({
   sharedKnxStatus,
   hueStatus,
   navigateToApartment,
+  configProtectionEnabled = false,
+  onConfigUnlocked,
+  onConfigLockRemoved,
 }) {
   const [apartmentName, setApartmentName] = useState(apartment.name);
   const [apartmentSlug, setApartmentSlug] = useState(apartment.slug);
@@ -65,6 +72,11 @@ export default function Connections({
     config.sharedUsesApartmentImportedGroupAddresses === true
   );
   const [newApartmentName, setNewApartmentName] = useState('');
+  const [configPasswordDraft, setConfigPasswordDraft] = useState('');
+  const [configPasswordConfirmDraft, setConfigPasswordConfirmDraft] = useState('');
+  const [removePasswordDialogOpen, setRemovePasswordDialogOpen] = useState(false);
+  const [removePasswordValue, setRemovePasswordValue] = useState('');
+  const [removePasswordError, setRemovePasswordError] = useState('');
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
     title: '',
@@ -109,6 +121,8 @@ export default function Connections({
     setApartmentGroupAddressFileName(config.importedGroupAddressesFileName || '');
     setSharedGroupAddressBook(Array.isArray(config.sharedImportedGroupAddresses) ? config.sharedImportedGroupAddresses : []);
     setSharedGroupAddressFileName(config.sharedImportedGroupAddressesFileName || '');
+    setConfigPasswordDraft('');
+    setConfigPasswordConfirmDraft('');
   }, [apartment.id, config]);
 
   const persistConfig = async (nextConfig) => {
@@ -274,6 +288,51 @@ export default function Connections({
       addToast(`Imported ${addresses.length} group addresses`, 'success');
     } catch {
       addToast('Failed to persist imported group addresses', 'error');
+    }
+  };
+
+  const handleSaveConfigPassword = async () => {
+    if (!configPasswordDraft) return;
+    if (configPasswordDraft !== configPasswordConfirmDraft) {
+      addToast('Passwords do not match', 'error');
+      return;
+    }
+
+    try {
+      const result = await setConfigPassword(configPasswordDraft);
+      if (result?.config) applyConfig?.(result.config);
+      else await fetchConfig();
+      setConfigPasswordDraft('');
+      setConfigPasswordConfirmDraft('');
+      onConfigUnlocked?.();
+      addToast(configProtectionEnabled ? 'Configuration password updated' : 'Configuration password enabled', 'success');
+    } catch {
+      addToast('Failed to save configuration password', 'error');
+    }
+  };
+
+  const closeRemovePasswordDialog = () => {
+    setRemovePasswordDialogOpen(false);
+    setRemovePasswordValue('');
+    setRemovePasswordError('');
+  };
+
+  const handleRemoveConfigPassword = async () => {
+    const verifyResult = await verifyConfigPassword(removePasswordValue);
+    if (!verifyResult?.success) {
+      setRemovePasswordError('Incorrect password. Try again.');
+      return;
+    }
+
+    try {
+      const result = await removeConfigPassword(removePasswordValue);
+      if (result?.config) applyConfig?.(result.config);
+      else await fetchConfig();
+      closeRemovePasswordDialog();
+      onConfigLockRemoved?.();
+      addToast('Configuration password removed', 'success');
+    } catch {
+      setRemovePasswordError('Failed to remove password. Try again.');
     }
   };
 
@@ -728,6 +787,96 @@ export default function Connections({
       <div className="connections-group">
         <div className="connections-group-header">
           <div>
+            <div className="connections-group-label">Configuration Management</div>
+            <h3 className="connections-group-title">Access & Backup</h3>
+            <p className="connections-group-copy">Protect configuration changes and manage full-house backups in one place.</p>
+          </div>
+        </div>
+
+        <div className="connections-card-grid">
+          <SetupCard
+            icon={<SettingsIcon size={20} />}
+            title="Configuration Password"
+            description="A single password unlocks configuration changes for the whole house."
+            tone="shared-icon"
+          >
+            <div className="connections-password-card">
+              <div className={`status-badge ${configProtectionEnabled ? 'status-connected' : 'status-disconnected'}`}>
+                <div className="status-dot" />
+                <span>{configProtectionEnabled ? 'Password protection is active' : 'Password protection is inactive'}</span>
+              </div>
+
+              <div className="connections-grid">
+                <div className="settings-field ga-field">
+                  <label className="settings-field-label">{configProtectionEnabled ? 'New Password' : 'Password'}</label>
+                  <input
+                    className="form-input"
+                    type="password"
+                    value={configPasswordDraft}
+                    onChange={(event) => setConfigPasswordDraft(event.target.value)}
+                    placeholder={configProtectionEnabled ? 'Enter a new password' : 'Enter a password'}
+                  />
+                </div>
+                <div className="settings-field ga-field">
+                  <label className="settings-field-label">Repeat Password</label>
+                  <input
+                    className="form-input"
+                    type="password"
+                    value={configPasswordConfirmDraft}
+                    onChange={(event) => setConfigPasswordConfirmDraft(event.target.value)}
+                    placeholder="Enter the password again"
+                  />
+                </div>
+              </div>
+
+              <div className="connections-password-actions">
+                <button
+                  className="btn-primary"
+                  disabled={!configPasswordDraft || !configPasswordConfirmDraft}
+                  onClick={handleSaveConfigPassword}
+                >
+                  {configProtectionEnabled ? 'Update Password' : 'Enable Password'}
+                </button>
+                {configProtectionEnabled ? (
+                  <button className="btn-secondary" onClick={() => setRemovePasswordDialogOpen(true)}>
+                    Remove Password
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </SetupCard>
+
+          <SetupCard
+            icon={<FileText size={20} />}
+            title="Full Config Backup"
+            description="Export the complete app state or import it into another instance, including apartments, slugs, KNX, Hue, areas, rooms, scenes and ETS settings."
+            tone="ets-icon"
+          >
+            <input
+              ref={configImportInputRef}
+              type="file"
+              accept=".json,application/json,text/json"
+              style={{ display: 'none' }}
+              onChange={handleImportConfigFile}
+            />
+            <div className="connections-card-actions">
+              <button className="btn-secondary" onClick={handleExportConfig}>
+                <Download size={16} /> Export Full Config
+              </button>
+              <button className="btn-primary" onClick={handleImportConfigClick}>
+                <Upload size={16} /> Import Full Config
+              </button>
+            </div>
+            <p className="connections-card-copy" style={{ marginTop: '0.9rem' }}>
+              Importing a config overwrites the current configuration after confirmation.
+            </p>
+          </SetupCard>
+        </div>
+      </div>
+
+      <div className="connections-group">
+        <div className="connections-group-header">
+          <div>
             <div className="connections-group-label">Apartments</div>
             <h3 className="connections-group-title">Manage Apartments</h3>
             <p className="connections-group-copy">Switch quickly or add another apartment to the same building.</p>
@@ -776,32 +925,6 @@ export default function Connections({
               </button>
             </div>
           </SetupCard>
-
-          <SetupCard
-            icon={<FileText size={20} />}
-            title="Full Config Backup"
-            description="Export the complete app state or import it into another instance, including apartments, slugs, KNX, Hue, areas, rooms, scenes and ETS settings."
-            tone="ets-icon"
-          >
-            <input
-              ref={configImportInputRef}
-              type="file"
-              accept=".json,application/json,text/json"
-              style={{ display: 'none' }}
-              onChange={handleImportConfigFile}
-            />
-            <div className="connections-card-actions">
-              <button className="btn-secondary" onClick={handleExportConfig}>
-                <Download size={16} /> Export Full Config
-              </button>
-              <button className="btn-primary" onClick={handleImportConfigClick}>
-                <Upload size={16} /> Import Full Config
-              </button>
-            </div>
-            <p className="connections-card-copy" style={{ marginTop: '0.9rem' }}>
-              Importing a config overwrites the current configuration after confirmation.
-            </p>
-          </SetupCard>
         </div>
       </div>
 
@@ -828,6 +951,21 @@ export default function Connections({
         danger={confirmDialog.danger}
         onConfirm={() => closeConfirmDialog(true)}
         onCancel={() => closeConfirmDialog(false)}
+      />
+
+      <PasswordDialog
+        isOpen={removePasswordDialogOpen}
+        title="Remove Configuration Password"
+        message="Enter the current password once to remove the protection."
+        value={removePasswordValue}
+        onChange={(nextValue) => {
+          setRemovePasswordValue(nextValue);
+          if (removePasswordError) setRemovePasswordError('');
+        }}
+        onSubmit={handleRemoveConfigPassword}
+        onCancel={closeRemovePasswordDialog}
+        submitLabel="Remove Password"
+        error={removePasswordError}
       />
     </div>
   );

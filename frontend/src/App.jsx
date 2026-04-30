@@ -4,8 +4,11 @@ import { Home, Settings as SettingsIcon, Wifi, WifiOff, Plug } from 'lucide-reac
 import Dashboard from './Dashboard';
 import Settings from './Settings';
 import Connections from './Connections';
-import { getConfig } from './configApi';
+import { getConfig, verifyConfigPassword } from './configApi';
 import { buildApartmentPath, buildApartmentView, migrateLegacyConfig, parseAppPath } from './appModel';
+import PasswordDialog from './components/PasswordDialog';
+
+const CONFIG_UNLOCK_STORAGE_KEY = 'knx-config-unlocked';
 
 function App() {
   const [route, setRoute] = useState(() => parseAppPath(window.location.pathname));
@@ -17,12 +20,27 @@ function App() {
   const [deviceStates, setDeviceStates] = useState({ apartments: {}, shared: {} });
   const [hueStates, setHueStates] = useState({ apartments: {}, shared: {} });
   const [toasts, setToasts] = useState([]);
+  const [configReady, setConfigReady] = useState(false);
+  const [configUnlocked, setConfigUnlocked] = useState(() => {
+    try {
+      return window.sessionStorage.getItem(CONFIG_UNLOCK_STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [configPasswordValue, setConfigPasswordValue] = useState('');
+  const [configPasswordError, setConfigPasswordError] = useState('');
 
   const normalizedConfig = useMemo(() => migrateLegacyConfig(config), [config]);
   const { apartment, apartmentConfig } = useMemo(
     () => buildApartmentView(normalizedConfig, route.apartmentSlug),
     [normalizedConfig, route.apartmentSlug]
   );
+  const configProtectionEnabled = normalizedConfig.building?.configProtectionEnabled === true;
+  const isProtectedSection = route.section === 'rooms' || route.section === 'connections';
+  const isConfigLocked = configProtectionEnabled && isProtectedSection && !configUnlocked;
+  const shouldMaskProtectedSection = isProtectedSection && (!configReady || isConfigLocked);
+  const canRenderProtectedSection = !isProtectedSection || (configReady && (!configProtectionEnabled || configUnlocked));
 
   const addToast = (msg, type = 'info') => {
     const id = Date.now();
@@ -35,16 +53,29 @@ function App() {
   };
 
   const fetchConfig = async () => {
+    setConfigReady(false);
     try {
       const result = await getConfig();
       setConfig(migrateLegacyConfig(result));
     } catch {
       addToast('Failed to load configuration from backend', 'error');
+    } finally {
+      setConfigReady(true);
     }
   };
 
   const applyConfig = (nextConfig) => {
     setConfig(migrateLegacyConfig(nextConfig));
+  };
+
+  const persistConfigUnlocked = (value) => {
+    setConfigUnlocked(value);
+    try {
+      if (value) window.sessionStorage.setItem(CONFIG_UNLOCK_STORAGE_KEY, 'true');
+      else window.sessionStorage.removeItem(CONFIG_UNLOCK_STORAGE_KEY);
+    } catch {
+      // Ignore storage errors in private browsing / tests.
+    }
   };
 
   const navigateTo = (slug, section = 'dashboard', { replace = false } = {}) => {
@@ -187,6 +218,26 @@ function App() {
     }
   }, [normalizedConfig.apartments, apartment, route.section]);
 
+  useEffect(() => {
+    if (configProtectionEnabled) return;
+    persistConfigUnlocked(false);
+    setConfigPasswordValue('');
+    setConfigPasswordError('');
+  }, [configProtectionEnabled]);
+
+  const handleUnlockProtectedConfig = async () => {
+    const trimmedPassword = configPasswordValue;
+    const result = await verifyConfigPassword(trimmedPassword);
+    if (result?.success) {
+      persistConfigUnlocked(true);
+      setConfigPasswordValue('');
+      setConfigPasswordError('');
+      return;
+    }
+
+    setConfigPasswordError('Incorrect password. Try again.');
+  };
+
   const currentKnxStatus = apartment ? (knxStatuses[apartment.id] || { connected: false, msg: 'Connecting...' }) : { connected: false, msg: 'Connecting...' };
   const currentHueStatus = apartment ? (hueStatuses[apartment.id] || { paired: false, bridgeIp: '' }) : { paired: false, bridgeIp: '' };
   const apartmentDeviceStates = apartment ? (deviceStates.apartments[apartment.id] || {}) : {};
@@ -305,7 +356,7 @@ function App() {
         </div>
       </header>
 
-      <main>
+      <main className={shouldMaskProtectedSection ? 'app-main app-main-locked' : 'app-main'}>
         {apartment && apartmentConfig && route.section === 'dashboard' && (
           <Dashboard
             apartment={apartment}
@@ -321,7 +372,7 @@ function App() {
           />
         )}
 
-        {apartment && apartmentConfig && route.section === 'rooms' && (
+        {apartment && apartmentConfig && route.section === 'rooms' && canRenderProtectedSection && (
           <Settings
             fullConfig={normalizedConfig}
             apartment={apartment}
@@ -334,7 +385,7 @@ function App() {
           />
         )}
 
-        {apartment && apartmentConfig && route.section === 'connections' && (
+        {apartment && apartmentConfig && route.section === 'connections' && canRenderProtectedSection && (
           <Connections
             fullConfig={normalizedConfig}
             apartment={apartment}
@@ -346,6 +397,9 @@ function App() {
             hueStatus={currentHueStatus}
             addToast={addToast}
             navigateToApartment={(slug) => navigateTo(slug, 'dashboard')}
+            configProtectionEnabled={configProtectionEnabled}
+            onConfigUnlocked={() => persistConfigUnlocked(true)}
+            onConfigLockRemoved={() => persistConfigUnlocked(false)}
           />
         )}
       </main>
@@ -358,6 +412,26 @@ function App() {
           </div>
         ))}
       </div>
+
+      <PasswordDialog
+        isOpen={isConfigLocked}
+        title="Configuration Password"
+        message={`Enter the house configuration password to open ${route.section === 'rooms' ? 'Rooms' : 'Setup'}.`}
+        value={configPasswordValue}
+        onChange={(nextValue) => {
+          setConfigPasswordValue(nextValue);
+          if (configPasswordError) setConfigPasswordError('');
+        }}
+        onSubmit={handleUnlockProtectedConfig}
+        onCancel={() => {
+          setConfigPasswordValue('');
+          setConfigPasswordError('');
+          if (apartment) navigateTo(apartment.slug, 'dashboard', { replace: true });
+        }}
+        submitLabel="Unlock"
+        cancelLabel="Back to Dashboard"
+        error={configPasswordError}
+      />
     </div>
   );
 }

@@ -7,6 +7,7 @@ const {
   getApartmentBySlug,
   getSharedAccessApartment,
   migrateLegacyConfig,
+  buildPublicConfig,
   normalizeDptString,
   normalizeConfigShape,
 } = require('../../configModel');
@@ -88,6 +89,23 @@ describe('configModel migration and normalization', () => {
     });
 
     expect(normalized.building.sharedUsesApartmentImportedGroupAddresses).toBe(true);
+  });
+
+  it('preserves a building-wide configuration password internally', () => {
+    const normalized = normalizeConfigShape({
+      version: 2,
+      building: {
+        sharedAccessApartmentId: 'apartment_1',
+        configurationPassword: 'familie',
+        sharedInfos: [],
+        sharedAreas: [],
+        sharedImportedGroupAddresses: [],
+        sharedImportedGroupAddressesFileName: '',
+      },
+      apartments: [{ id: 'apartment_1', name: 'Wohnung Ost', slug: 'wohnung-ost', floors: [], alarms: [] }],
+    });
+
+    expect(normalized.building.configurationPassword).toBe('familie');
   });
 
   it('normalizes imported and persisted ETS DPT formats into backend-safe DPT ids', () => {
@@ -174,5 +192,25 @@ describe('configModel selectors', () => {
     expect(getAllSharedRooms(config)).toEqual([
       expect.objectContaining({ id: 'shared-room', name: 'Garden Lights' }),
     ]);
+  });
+});
+
+describe('buildPublicConfig', () => {
+  it('replaces the stored password with a boolean protection flag', () => {
+    const publicConfig = buildPublicConfig({
+      version: 2,
+      building: {
+        sharedAccessApartmentId: 'apartment_1',
+        configurationPassword: 'familie',
+        sharedInfos: [],
+        sharedAreas: [],
+        sharedImportedGroupAddresses: [],
+        sharedImportedGroupAddressesFileName: '',
+      },
+      apartments: [{ id: 'apartment_1', name: 'Wohnung Ost', slug: 'wohnung-ost', floors: [], alarms: [] }],
+    });
+
+    expect(publicConfig.building.configProtectionEnabled).toBe(true);
+    expect(publicConfig.building.configurationPassword).toBeUndefined();
   });
 });

@@ -1034,6 +1034,32 @@ body {
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
 }
 
+.app-main {
+  position: relative;
+  transition: filter 0.2s ease, opacity 0.2s ease;
+}
+
+.app-main-locked {
+  filter: blur(10px);
+  opacity: 0.5;
+  pointer-events: none;
+  user-select: none;
+}
+
+.password-dialog {
+  width: min(440px, 92vw);
+}
+
+.password-dialog-body {
+  margin-top: 1.35rem;
+}
+
+.password-dialog-error {
+  margin: 0.8rem 0 0;
+  color: #fca5a5;
+  font-size: 0.95rem;
+}
+
 /* ── Hue Lamp List ─────────────────────────── */
 .hue-lamp-list {
   display: flex;
@@ -1088,6 +1114,18 @@ body {
 }
 .knx-ip-row .settings-field { flex-shrink: 0; }
 .knx-ip-row .knx-port-field { width: 110px; }
+
+.connections-password-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.connections-password-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
 
 /* Room card in Settings */
 .room-settings-card {
@@ -1973,7 +2011,7 @@ html { overflow-x: hidden; }
 }
 
 .confirm-dialog-message {
-  margin: 0.4rem 0 0;
+  margin: 0.5rem 0 0;
   color: var(--text-secondary);
   line-height: 1.45;
 }
@@ -1982,7 +2020,7 @@ html { overflow-x: hidden; }
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
-  margin-top: 1.5rem;
+  margin-top: 1.35rem;
 }
 
 .settings-empty-floor {
