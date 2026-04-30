@@ -267,7 +267,8 @@ describe('Connections — main line setup', () => {
     const user = userEvent.setup();
     renderConnections();
 
-    await user.selectOptions(screen.getByRole('combobox'), 'apartment_2');
+    const accessCard = screen.getByText('Main Line Access').closest('section');
+    await user.selectOptions(within(accessCard).getByRole('combobox'), 'apartment_2');
 
     await waitFor(() => {
       expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
