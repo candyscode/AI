@@ -320,17 +320,22 @@ function CollapsibleRoomCard({
   handleGenerateBaseScenes, persistRoomChanges,
   openHueSceneModal, openHueRoomModal, openHueLampModal, openGroupAddressModal,
   hueStatus, onFuncDragEnd, onSceneDragEnd, sensors,
-  onMoveToFloor,
   resolveGroupAddressName,
 }) {
   const [expanded, setExpanded] = useState(import.meta.env.MODE === 'test');
   const [renamingRoom, setRenamingRoom] = useState(false);
   const [roomNameDraft, setRoomNameDraft] = useState(room.name);
   const roomNameInputRef = useRef(null);
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: room.id });
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: room.id,
+    data: { type: 'room', roomId: room.id, floorId }
+  });
+  const style = {
+    transform: isDragging ? undefined : CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.08 : 1,
+  };
 
-  const otherFloors = floors.filter(f => f.id !== floorId);
   const totalFuncs = (room.functions || []).length;
   const totalScenes = (room.scenes || []).length;
 
@@ -391,18 +396,6 @@ function CollapsibleRoomCard({
         <div className="room-card-meta" onClick={e => e.stopPropagation()}>
           {totalScenes > 0 && <span className="room-meta-badge">{totalScenes} scenes</span>}
           {totalFuncs > 0 && <span className="room-meta-badge">{totalFuncs} functions</span>}
-          {otherFloors.length > 0 && (
-            <select
-              className="room-move-select"
-              value=""
-              title="Move to floor"
-              onChange={e => { if (e.target.value) onMoveToFloor(room.id, floorId, e.target.value); }}
-              onClick={e => e.stopPropagation()}
-            >
-              <option value="" disabled>Move to…</option>
-              {otherFloors.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
-          )}
           <button className="btn-danger icon-btn" onClick={e => { e.stopPropagation(); handleDeleteRoom(floorId, room.id); }} title="Delete Room">
             <Trash2 size={15} />
           </button>

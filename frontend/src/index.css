@@ -1155,6 +1155,35 @@ body {
   margin-bottom: 1rem;
 }
 
+.room-drag-overlay {
+  max-width: calc(100vw - 2rem);
+  background: linear-gradient(160deg, var(--bg-card) 0%, rgba(20, 22, 28, 0.96) 100%);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 16px;
+  padding: 1.25rem;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.room-drag-overlay-handle {
+  color: rgba(255,255,255,0.38);
+  font-size: 1rem;
+  letter-spacing: -0.08em;
+  line-height: 1;
+}
+
+.room-drag-overlay .room-collapse-header {
+  margin: 0;
+}
+
+.room-drag-overlay-portal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2500;
+  pointer-events: none;
+}
+
 /* Header row: drag handle | room name | delete */
 .room-settings-header {
   display: flex;
@@ -1741,6 +1770,22 @@ html { overflow-x: hidden; }
   border-bottom: 2px solid var(--glass-bg); /* hide the bottom border = seamless merge */
 }
 
+.floor-tab.floor-tab-room-drag-active {
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s, transform 0.12s;
+}
+
+.floor-tab.floor-tab-room-drop-target {
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.45);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.18), 0 10px 24px rgba(59, 130, 246, 0.14);
+  transform: translateY(-2px);
+}
+
+.floor-tab.floor-tab-room-drop-target .floor-tab-label,
+.floor-tab.floor-tab-room-drop-target .floor-tab-count {
+  color: var(--text-primary);
+}
+
 .floor-tab-grip {
   display: inline-flex;
   align-items: center;
@@ -1971,14 +2016,20 @@ html { overflow-x: hidden; }
 
 .settings-add-room-bar {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 0.75rem;
-  padding: 1rem 1.5rem;
+  padding: 0.45rem 1.5rem 1rem;
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
+.settings-add-room-input-wrap {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
 .settings-rooms-body {
-  padding: 1.25rem 1.5rem 1.5rem;
+  padding: 1.25rem 1.5rem 0.75rem;
 }
 
 .settings-add-area-modal {

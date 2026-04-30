@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  DndContext, closestCenter, PointerSensor, TouchSensor,
+  DndContext, closestCenter, pointerWithin, PointerSensor, TouchSensor,
   KeyboardSensor, useSensor, useSensors
 } from '@dnd-kit/core';
 import {
@@ -37,6 +37,91 @@ function migrateConfig(config) {
   return Array.isArray(config.floors) ? config.floors : [];
 }
 
+export function reorderRoomsWithinFloor(floors, floorId, activeRoomId, overRoomId) {
+  return floors.map((floor) => {
+    if (floor.id !== floorId) return floor;
+    const oldIndex = floor.rooms.findIndex((room) => room.id === activeRoomId);
+    const newIndex = floor.rooms.findIndex((room) => room.id === overRoomId);
+    if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return floor;
+    return { ...floor, rooms: arrayMove(floor.rooms, oldIndex, newIndex) };
+  });
+}
+
+export function moveRoomBetweenFloors(floors, roomId, targetFloorId) {
+  let movedRoom = null;
+  const withoutRoom = floors.map((floor) => {
+    const room = floor.rooms.find((entry) => entry.id === roomId);
+    if (!room) return floor;
+    movedRoom = room;
+    return { ...floor, rooms: floor.rooms.filter((entry) => entry.id !== roomId) };
+  });
+
+  if (!movedRoom) return floors;
+
+  return withoutRoom.map((floor) => (
+    floor.id !== targetFloorId
+      ? floor
+      : { ...floor, rooms: [...floor.rooms, movedRoom] }
+  ));
+}
+
+function RoomDragPreview({ room, width }) {
+  if (!room) return null;
+
+  const totalScenes = (room.scenes || []).length;
+  const totalFuncs = (room.functions || []).length;
+
+  return (
+    <div className="room-drag-overlay" style={width ? { width: `${width}px` } : undefined}>
+      <div className="room-settings-header room-collapse-header">
+        <span className="drag-handle room-drag-handle room-drag-overlay-handle">⋮⋮</span>
+        <div className="room-name-editable">
+          <h3 className="room-name-heading">{room.name}</h3>
+        </div>
+        <div className="room-card-meta">
+          {totalScenes > 0 && <span className="room-meta-badge">{totalScenes} scenes</span>}
+          {totalFuncs > 0 && <span className="room-meta-badge">{totalFuncs} functions</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function dragCollisionDetection(args) {
+  const activeType = args.active?.data?.current?.type;
+
+  if (activeType === 'room') {
+    const allowed = args.droppableContainers.filter((container) => {
+      const type = container.data?.current?.type;
+      return type === 'room' || type === 'floor';
+    });
+    return pointerWithin({ ...args, droppableContainers: allowed })
+      || closestCenter({ ...args, droppableContainers: allowed });
+  }
+
+  if (activeType === 'floor') {
+    const allowed = args.droppableContainers.filter((container) => container.data?.current?.type === 'floor');
+    return pointerWithin({ ...args, droppableContainers: allowed })
+      || closestCenter({ ...args, droppableContainers: allowed });
+  }
+
+  return pointerWithin(args) || closestCenter(args);
+}
+
+function getEventClientPoint(event) {
+  if (!event) return null;
+  if ('touches' in event && event.touches?.length) {
+    return { x: event.touches[0].clientX, y: event.touches[0].clientY };
+  }
+  if ('changedTouches' in event && event.changedTouches?.length) {
+    return { x: event.changedTouches[0].clientX, y: event.changedTouches[0].clientY };
+  }
+  if ('clientX' in event && 'clientY' in event) {
+    return { x: event.clientX, y: event.clientY };
+  }
+  return null;
+}
+
 // ── Main Settings ─────────────────────────────────────────
 export default function Settings({ fullConfig, apartment, config, fetchConfig, applyConfig, addToast, hueStatus, sharedHueStatus }) {
   const [floors, setFloors] = useState(() => migrateConfig(config));
@@ -49,6 +134,13 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
   });
   const [activeTab, setActiveTab] = useState('rooms');
   const [newRoomName, setNewRoomName] = useState('');
+  const [roomDragActive, setRoomDragActive] = useState(false);
+  const [roomDropTargetFloorId, setRoomDropTargetFloorId] = useState(null);
+  const [draggedRoom, setDraggedRoom] = useState(null);
+  const [draggedRoomWidth, setDraggedRoomWidth] = useState(null);
+  const [draggedRoomPointer, setDraggedRoomPointer] = useState(null);
+  const [draggedRoomAnchorOffset, setDraggedRoomAnchorOffset] = useState({ x: 32, y: 22 });
+  const draggedRoomStartPointerRef = useRef(null);
 
   // Hue modals
   const [hueLampModal, setHueLampModal] = useState({ open: false, roomId: null, floorId: null });
@@ -307,22 +399,6 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     saveFloors(updated);
   };
 
-  const handleMoveToFloor = async (roomId, fromFloorId, toFloorId) => {
-    let movedRoom = null;
-    let updated = floorsRef.current.map(f => {
-      if (f.id === fromFloorId) {
-        movedRoom = f.rooms.find(r => r.id === roomId);
-        return { ...f, rooms: f.rooms.filter(r => r.id !== roomId) };
-      }
-      return f;
-    });
-    if (!movedRoom) return;
-    updated = updated.map(f => f.id !== toFloorId ? f : { ...f, rooms: [...f.rooms, movedRoom] });
-    commitFloorsState(updated);
-    try { await saveFloors(updated); addToast(`Moved to ${floorsRef.current.find(f => f.id === toFloorId)?.name}`, 'success'); }
-    catch { addToast('Failed to move room', 'error'); }
-  };
-
   // ── Scene handlers ───────────────────────────────────────
   const handleAddScene = (floorId, roomId, category = 'light') => {
     const room = floorsRef.current.find(f => f.id === floorId)?.rooms.find(r => r.id === roomId);
@@ -442,16 +518,103 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
   };
 
   // ── DnD handlers ─────────────────────────────────────────
-  const onRoomDragEnd = ({ active, over }) => {
-    if (!over || active.id === over.id || !activeFloorId) return;
-    const updated = floorsRef.current.map(f => {
-      if (f.id !== activeFloorId) return f;
-      const oi = f.rooms.findIndex(r => r.id === active.id);
-      const ni = f.rooms.findIndex(r => r.id === over.id);
-      return { ...f, rooms: arrayMove(f.rooms, oi, ni) };
+  const onRoomDragStart = ({ active, activatorEvent }) => {
+    const activeType = active?.data?.current?.type;
+    if (activeType === 'room') {
+      const room = floorsRef.current.flatMap((floor) => floor.rooms).find((entry) => entry.id === active.id) || null;
+      const initialRect = active?.rect?.current?.initial || null;
+      const measuredWidth = initialRect?.width || null;
+      const startPoint = getEventClientPoint(activatorEvent);
+      const handleRect = active?.activatorNode?.current?.getBoundingClientRect?.() || null;
+      const anchorOffset = initialRect && startPoint
+        ? {
+          x: startPoint.x - initialRect.left,
+          y: startPoint.y - initialRect.top,
+        }
+        : initialRect && handleRect
+          ? {
+            x: (handleRect.left - initialRect.left) + (handleRect.width / 2),
+            y: (handleRect.top - initialRect.top) + (handleRect.height / 2),
+          }
+          : { x: 32, y: 22 };
+
+      draggedRoomStartPointerRef.current = startPoint;
+      setRoomDragActive(true);
+      setRoomDropTargetFloorId(null);
+      setDraggedRoom(room);
+      setDraggedRoomWidth(measuredWidth);
+      setDraggedRoomPointer(startPoint);
+      setDraggedRoomAnchorOffset(anchorOffset);
+    }
+  };
+
+  const onRoomDragOver = ({ active, over }) => {
+    const activeType = active?.data?.current?.type;
+    const overType = over?.data?.current?.type;
+
+    if (activeType !== 'room') {
+      setRoomDropTargetFloorId(null);
+      return;
+    }
+
+    setRoomDropTargetFloorId(overType === 'floor' ? over.id : null);
+  };
+
+  const onRoomDragMove = ({ active, delta }) => {
+    if (active?.data?.current?.type !== 'room' || !draggedRoomStartPointerRef.current) return;
+    setDraggedRoomPointer({
+      x: draggedRoomStartPointerRef.current.x + delta.x,
+      y: draggedRoomStartPointerRef.current.y + delta.y,
     });
-    commitFloorsState(updated);
-    saveFloors(updated).catch(() => addToast('Failed to save room order', 'error'));
+  };
+
+  const resetRoomDragState = () => {
+    setRoomDragActive(false);
+    setRoomDropTargetFloorId(null);
+    setDraggedRoom(null);
+    setDraggedRoomWidth(null);
+    setDraggedRoomPointer(null);
+    setDraggedRoomAnchorOffset({ x: 32, y: 22 });
+    draggedRoomStartPointerRef.current = null;
+  };
+
+  const onRoomDragEnd = ({ active, over }) => {
+    if (!over || active.id === over.id) {
+      resetRoomDragState();
+      return;
+    }
+
+    const floorIds = floorsRef.current.map((floor) => floor.id);
+    const activeId = active.id;
+    const overId = over.id;
+
+    if (floorIds.includes(activeId) && floorIds.includes(overId)) {
+      const oldIndex = floorsRef.current.findIndex((floor) => floor.id === activeId);
+      const newIndex = floorsRef.current.findIndex((floor) => floor.id === overId);
+      resetRoomDragState();
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+      handleReorderFloors(arrayMove(floorsRef.current, oldIndex, newIndex));
+      return;
+    }
+
+    if (floorIds.includes(overId)) {
+      const sourceFloor = floorsRef.current.find((floor) => floor.rooms.some((room) => room.id === activeId));
+      resetRoomDragState();
+      if (!sourceFloor || sourceFloor.id === overId) return;
+      const moved = moveRoomBetweenFloors(floorsRef.current, activeId, overId);
+      commitFloorsState(moved);
+      saveFloors(moved)
+        .then(() => addToast(`Moved to ${moved.find((floor) => floor.id === overId)?.name}`, 'success'))
+        .catch(() => addToast('Failed to move room', 'error'));
+      return;
+    }
+
+    const sourceFloor = floorsRef.current.find((floor) => floor.rooms.some((room) => room.id === activeId));
+    resetRoomDragState();
+    if (!sourceFloor) return;
+    const reordered = reorderRoomsWithinFloor(floorsRef.current, sourceFloor.id, activeId, overId);
+    commitFloorsState(reordered);
+    saveFloors(reordered).catch(() => addToast('Failed to save room order', 'error'));
   };
 
   const onFuncDragEnd = ({ active, over }, floorId, roomId) => {
@@ -752,10 +915,41 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
         </div>
       </div>
       
-      {/* Header bar that holds either FloorTabs or Title */}
-      <div className="settings-floors-header">
-        {activeTab === 'rooms' ? (
-          <>
+      {activeTab === 'globals' ? (
+        <>
+          <div className="settings-floors-header">
+            <div style={{ padding: '1rem 1.5rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              Central Information & Apartment Alarms
+            </div>
+          </div>
+          <div style={{ padding: '1.5rem' }}>
+            <GlobalsConfig
+              sharedInfos={sharedInfos}
+              apartmentAlarms={alarms}
+              setSharedInfos={setSharedInfos}
+              setApartmentAlarms={setAlarms}
+              saveSharedInfos={saveSharedInfos}
+              saveApartmentAlarms={saveAlarms}
+              openGroupAddressModal={openGroupAddressModal}
+              requestConfirm={requestConfirm}
+              resolveGroupAddressName={(address, type) => type === 'alarm'
+                ? resolveApartmentGroupAddressName(address)
+                : resolveSharedGroupAddressName(address)}
+            />
+          </div>
+        </>
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={dragCollisionDetection}
+          onDragStart={onRoomDragStart}
+          onDragMove={onRoomDragMove}
+          onDragOver={onRoomDragOver}
+          onDragCancel={resetRoomDragState}
+          onDragEnd={onRoomDragEnd}
+        >
+        <>
+          <div className="settings-floors-header">
             <FloorTabs
               floors={floors}
               activeFloorId={activeFloor?.id}
@@ -765,58 +959,18 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
               onDeleteFloor={handleDeleteFloor}
               onRenameFloor={handleRenameFloor}
               addButtonLabel="Add Area"
+              roomDragActive={roomDragActive}
+              roomDropTargetFloorId={roomDropTargetFloorId}
             />
-          </>
-        ) : (
-          <div style={{ padding: '1rem 1.5rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-            Central Information & Apartment Alarms
           </div>
-        )}
-      </div>
-
-      {activeTab === 'globals' ? (
-        <div style={{ padding: '1.5rem' }}>
-          <GlobalsConfig
-            sharedInfos={sharedInfos}
-            apartmentAlarms={alarms}
-            setSharedInfos={setSharedInfos}
-            setApartmentAlarms={setAlarms}
-            saveSharedInfos={saveSharedInfos}
-            saveApartmentAlarms={saveAlarms}
-            openGroupAddressModal={openGroupAddressModal}
-            requestConfirm={requestConfirm}
-            resolveGroupAddressName={(address, type) => type === 'alarm'
-              ? resolveApartmentGroupAddressName(address)
-              : resolveSharedGroupAddressName(address)}
-          />
-        </div>
-      ) : (
-        <>
-          {/* Add Room bar */}
-          <div className="settings-add-room-bar">
-        <div className="settings-field" style={{ flex: 1 }}>
-          <input
-            className="form-input"
-            placeholder={`Add room to ${activeFloor?.name || 'floor'}…`}
-            value={newRoomName}
-            onChange={e => setNewRoomName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleCreateRoom()}
-          />
-        </div>
-        <button className="btn-primary" onClick={handleCreateRoom} disabled={!activeFloor}>
-          <Plus size={16} /> Add Room
-        </button>
-      </div>
-
       {/* Rooms list */}
       <div className="settings-rooms-body">
         {activeRooms.length === 0 ? (
           <div className="settings-empty-floor">
             <p>No rooms on <strong>{activeFloor?.name}</strong> yet.</p>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Use the field above to add your first room.</p>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Use the field below to add your first room.</p>
           </div>
         ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onRoomDragEnd}>
             <SortableContext items={roomIds} strategy={verticalListSortingStrategy}>
               {activeRooms.map(room => (
                 <CollapsibleRoomCard
@@ -843,15 +997,41 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
                   onFuncDragEnd={onFuncDragEnd}
                   onSceneDragEnd={onSceneDragEnd}
                   sensors={sensors}
-                  onMoveToFloor={handleMoveToFloor}
                   resolveGroupAddressName={(address) => resolveGroupAddressNameForFloor(activeFloor.id, address)}
                 />
               ))}
             </SortableContext>
-          </DndContext>
         )}
       </div>
+      {/* Add Room bar */}
+      <div className="settings-add-room-bar">
+        <div className="settings-add-room-input-wrap" style={{ flex: 1 }}>
+          <input
+            className="form-input"
+            placeholder={`Add room to ${activeFloor?.name || 'floor'}…`}
+            value={newRoomName}
+            onChange={e => setNewRoomName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleCreateRoom()}
+          />
+        </div>
+        <button className="btn-primary" onClick={handleCreateRoom} disabled={!activeFloor}>
+          <Plus size={16} /> Add Room
+        </button>
+      </div>
       </>
+      </DndContext>
+      )}
+
+      {roomDragActive && draggedRoom && draggedRoomPointer && createPortal(
+        <div
+          className="room-drag-overlay-portal"
+          style={{
+            transform: `translate3d(${draggedRoomPointer.x - draggedRoomAnchorOffset.x}px, ${draggedRoomPointer.y - draggedRoomAnchorOffset.y}px, 0)`,
+          }}
+        >
+          <RoomDragPreview room={draggedRoom} width={draggedRoomWidth} />
+        </div>,
+        document.body
       )}
 
       {/* ── Hue Lamp Modal ── */}

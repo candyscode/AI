@@ -1,20 +1,10 @@
 import React, { useState, useRef } from 'react';
 import {
-  DndContext, closestCenter, PointerSensor, TouchSensor,
-  KeyboardSensor, useSensor, useSensors
-} from '@dnd-kit/core';
-import {
   SortableContext, horizontalListSortingStrategy,
-  useSortable, arrayMove, sortableKeyboardCoordinates
+  useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Plus, GripVertical, Trash2, Check, X, Pencil } from 'lucide-react';
-
-// Restrict drag movement to the horizontal axis only (no @dnd-kit/modifiers needed)
-const restrictToHorizontalAxis = ({ transform }) => ({
-  ...transform,
-  y: 0,
-});
 
 function FloorTabContent({ floor, showRoomCount }) {
   return (
@@ -30,9 +20,20 @@ function FloorTabContent({ floor, showRoomCount }) {
   );
 }
 
-function SortableFloorTab({ floor, isActive, onClick, onDelete, canDelete, onReorderFloors, onRename, showRoomCount }) {
+function SortableFloorTab({
+  floor,
+  isActive,
+  onClick,
+  onDelete,
+  canDelete,
+  onReorderFloors,
+  onRename,
+  showRoomCount,
+  roomDragActive = false,
+  roomDropTarget = false,
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: floor.id });
+    useSortable({ id: floor.id, data: { type: 'floor', floorId: floor.id } });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -63,8 +64,8 @@ function SortableFloorTab({ floor, isActive, onClick, onDelete, canDelete, onReo
     <div
       ref={setNodeRef}
       style={style}
-      className={`floor-tab ${isActive ? 'active' : ''}`}
-      onClick={!editing ? onClick : undefined}
+      className={`floor-tab ${isActive ? 'active' : ''} ${roomDragActive ? 'floor-tab-room-drag-active' : ''} ${roomDropTarget ? 'floor-tab-room-drop-target' : ''}`}
+      onClick={!editing && !roomDragActive ? onClick : undefined}
       onDoubleClick={(!editing && onRename) ? startEdit : undefined}
       title={(!editing && onRename) ? "Double-click to rename" : undefined}
     >
@@ -123,22 +124,11 @@ export default function FloorTabs({
   largeTabs = false,
   extraTab = null,
   addButtonLabel = 'Add Floor',
+  roomDragActive = false,
+  roomDropTargetFloorId = null,
 }) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-
-  const handleDragEnd = ({ active, over }) => {
-    if (!onReorderFloors || !over || active.id === over.id) return;
-    const oi = floors.findIndex(f => f.id === active.id);
-    const ni = floors.findIndex(f => f.id === over.id);
-    onReorderFloors(arrayMove(floors, oi, ni));
-  };
 
   const handleAdd = () => {
     const name = newName.trim();
@@ -152,67 +142,62 @@ export default function FloorTabs({
 
   return (
     <div className="floor-tabs-wrapper">
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        modifiers={[restrictToHorizontalAxis]}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext items={floorIds} strategy={horizontalListSortingStrategy}>
-          <div className={`floor-tabs-strip ${largeTabs ? 'large-tabs' : ''}`}>
-            {extraTab}
-            {floors.map(floor => (
-              <SortableFloorTab
-                key={floor.id}
-                floor={floor}
-                isActive={floor.id === activeFloorId}
-                onClick={() => onSelectFloor(floor.id)}
-                onDelete={onDeleteFloor}
-                canDelete={!!onDeleteFloor && floors.length > 1}
-                onReorderFloors={onReorderFloors}
-                onRename={onRenameFloor}
-                showRoomCount={showRoomCount}
-              />
-            ))}
-            {showAddButton && !adding && (
-              <button
-                className="floor-tab-add"
-                onClick={() => {
-                  if (onAddButtonClick) {
-                    onAddButtonClick();
-                    return;
-                  }
-                  setAdding(true);
+      <SortableContext items={floorIds} strategy={horizontalListSortingStrategy}>
+        <div className={`floor-tabs-strip ${largeTabs ? 'large-tabs' : ''}`}>
+          {extraTab}
+          {floors.map(floor => (
+            <SortableFloorTab
+              key={floor.id}
+              floor={floor}
+              isActive={floor.id === activeFloorId}
+              onClick={() => onSelectFloor(floor.id)}
+              onDelete={onDeleteFloor}
+              canDelete={!!onDeleteFloor && floors.length > 1}
+              onReorderFloors={onReorderFloors}
+              onRename={onRenameFloor}
+              showRoomCount={showRoomCount}
+              roomDragActive={roomDragActive}
+              roomDropTarget={roomDropTargetFloorId === floor.id}
+            />
+          ))}
+          {showAddButton && !adding && (
+            <button
+              className="floor-tab-add"
+              onClick={() => {
+                if (onAddButtonClick) {
+                  onAddButtonClick();
+                  return;
+                }
+                setAdding(true);
+              }}
+              title={addButtonLabel}
+            >
+              <Plus size={14} /> {addButtonLabel}
+            </button>
+          )}
+          {adding && (
+            <div className="floor-tab-new-input">
+              <input
+                autoFocus
+                className="form-input floor-tab-input"
+                placeholder="Floor name…"
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleAdd();
+                  if (e.key === 'Escape') { setAdding(false); setNewName(''); }
                 }}
-                title={addButtonLabel}
-              >
-                <Plus size={14} /> {addButtonLabel}
+              />
+              <button className="floor-tab-confirm" onClick={handleAdd} title="Confirm">
+                <Check size={14} />
               </button>
-            )}
-            {adding && (
-              <div className="floor-tab-new-input">
-                <input
-                  autoFocus
-                  className="form-input floor-tab-input"
-                  placeholder="Floor name…"
-                  value={newName}
-                  onChange={e => setNewName(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') handleAdd();
-                    if (e.key === 'Escape') { setAdding(false); setNewName(''); }
-                  }}
-                />
-                <button className="floor-tab-confirm" onClick={handleAdd} title="Confirm">
-                  <Check size={14} />
-                </button>
-                <button className="floor-tab-cancel" onClick={() => { setAdding(false); setNewName(''); }} title="Cancel">
-                  <X size={14} />
-                </button>
-              </div>
-            )}
-          </div>
-        </SortableContext>
-      </DndContext>
+              <button className="floor-tab-cancel" onClick={() => { setAdding(false); setNewName(''); }} title="Cancel">
+                <X size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+      </SortableContext>
     </div>
   );
 }
