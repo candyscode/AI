@@ -2603,6 +2603,75 @@ html { overflow-x: hidden; }
   transform: translateX(20px);
 }
 
+.routine-modal-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.routine-modal-row {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+}
+
+.routine-modal-row--primary {
+  grid-template-columns: minmax(0, 1.9fr) minmax(180px, 0.9fr) 140px;
+}
+
+.routine-modal-row--secondary {
+  grid-template-columns: minmax(0, 1fr) 190px;
+}
+
+.routine-modal-name-field,
+.routine-modal-trigger-field {
+  min-width: 0;
+}
+
+.routine-modal-enabled-field {
+  display: flex;
+  flex-direction: column;
+}
+
+.routine-modal-enabled-field .routine-toggle-switch {
+  margin-top: 0.55rem;
+}
+
+.routine-modal-frequency-field .settings-field-label,
+.routine-modal-enabled-field .settings-field-label {
+  min-height: 19px;
+}
+
+.routine-modal-time-field {
+  min-width: 190px;
+}
+
+.routine-modal-time-field--hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.routine-time-input {
+  min-width: 190px;
+  padding-right: 2.75rem;
+}
+
+.routine-time-input::-webkit-calendar-picker-indicator {
+  opacity: 0.75;
+}
+
+.routine-trigger-note {
+  font-size: 0.75rem;
+  color: #fca5a5;
+  margin-top: 0.35rem;
+}
+
+.routine-actions-section {
+  margin-top: 0.65rem;
+  margin-bottom: 1.25rem;
+}
+
 /* Routine Trigger Selector */
 .routine-trigger-selector {
   display: flex;
@@ -2632,6 +2701,18 @@ html { overflow-x: hidden; }
   background: rgba(255,255,255,0.15);
   color: var(--text-primary);
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+@media (max-width: 860px) {
+  .routine-modal-row--primary,
+  .routine-modal-row--secondary {
+    grid-template-columns: 1fr;
+  }
+
+  .routine-modal-time-field,
+  .routine-time-input {
+    min-width: 0;
+  }
 }
 
 /* Meta Info Row */
