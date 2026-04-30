@@ -58,7 +58,14 @@ function buildApp(configPath) {
   app.use(require('cors')());
   app.use(bodyParser.json());
 
-  let config = { knxIp: '', knxPort: 3671, hue: { bridgeIp: '', apiKey: '' }, rooms: [], globals: [] };
+  let config = {
+    knxIp: '',
+    knxPort: 3671,
+    hue: { bridgeIp: '', apiKey: '' },
+    rooms: [],
+    globals: [],
+    building: { configurationPassword: '' },
+  };
 
   if (fs.existsSync(configPath)) {
     try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch {}
@@ -69,9 +76,19 @@ function buildApp(configPath) {
   hueService.init(config.hue);
 
   function saveConfig() { fs.writeFileSync(configPath, JSON.stringify(config, null, 2)); }
+  function buildPublicConfig() {
+    return {
+      ...config,
+      building: {
+        ...(config.building || {}),
+        configProtectionEnabled: !!config.building?.configurationPassword,
+        configurationPassword: undefined,
+      },
+    };
+  }
 
   // ── Config routes ──
-  app.get('/api/config', (req, res) => res.json(config));
+  app.get('/api/config', (req, res) => res.json(buildPublicConfig()));
 
   app.post('/api/config', (req, res) => {
     const { knxIp, knxPort, rooms, globals } = req.body;
@@ -80,7 +97,33 @@ function buildApp(configPath) {
     if (rooms   !== undefined) config.rooms  = rooms;
     if (globals !== undefined) config.globals = globals;
     saveConfig();
-    res.json({ success: true, config });
+    res.json({ success: true, config: buildPublicConfig() });
+  });
+
+  app.post('/api/config-protection/verify', (req, res) => {
+    const submittedPassword = typeof req.body?.password === 'string' ? req.body.password : '';
+    const currentPassword = config.building?.configurationPassword || '';
+    res.json({ success: !!currentPassword && submittedPassword === currentPassword, enabled: !!currentPassword });
+  });
+
+  app.post('/api/config-protection', (req, res) => {
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    if (!password) {
+      return res.status(400).json({ success: false, error: 'password required' });
+    }
+    config.building = { ...(config.building || {}), configurationPassword: password };
+    saveConfig();
+    res.json({ success: true, config: buildPublicConfig() });
+  });
+
+  app.delete('/api/config-protection', (req, res) => {
+    const submittedPassword = typeof req.body?.password === 'string' ? req.body.password : '';
+    if ((config.building?.configurationPassword || '') !== submittedPassword) {
+      return res.status(401).json({ success: false, error: 'Incorrect password' });
+    }
+    config.building.configurationPassword = '';
+    saveConfig();
+    res.json({ success: true, config: buildPublicConfig() });
   });
 
   // ── Action route ──
@@ -264,6 +307,30 @@ describe('POST /api/config', () => {
     expect(res.body.config.globals).toEqual(newGlobals);
     const persisted = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     expect(persisted.globals).toEqual(newGlobals);
+  });
+});
+
+describe('config protection routes', () => {
+  it('returns only the boolean protection flag via GET /api/config', async () => {
+    await request(app).post('/api/config-protection').send({ password: 'familie' });
+
+    const res = await request(app).get('/api/config');
+    expect(res.status).toBe(200);
+    expect(res.body.building.configProtectionEnabled).toBe(true);
+    expect(res.body.building.configurationPassword).toBeUndefined();
+  });
+
+  it('verifies, stores, and removes the configuration password', async () => {
+    const enableRes = await request(app).post('/api/config-protection').send({ password: 'familie' });
+    expect(enableRes.status).toBe(200);
+    expect(enableRes.body.config.building.configProtectionEnabled).toBe(true);
+
+    const verifyRes = await request(app).post('/api/config-protection/verify').send({ password: 'familie' });
+    expect(verifyRes.body).toEqual({ success: true, enabled: true });
+
+    const removeRes = await request(app).delete('/api/config-protection').send({ password: 'familie' });
+    expect(removeRes.status).toBe(200);
+    expect(removeRes.body.config.building.configProtectionEnabled).toBe(false);
   });
 });
 

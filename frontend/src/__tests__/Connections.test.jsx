@@ -7,6 +7,9 @@ import { buildApartmentView } from '../appModel';
 
 vi.mock('../configApi', () => ({
   updateConfig: vi.fn(),
+  verifyConfigPassword: vi.fn(),
+  setConfigPassword: vi.fn(),
+  removeConfigPassword: vi.fn(),
   discoverHueBridge: vi.fn(),
   pairHueBridge: vi.fn(),
   unpairHueBridge: vi.fn(),
@@ -95,6 +98,9 @@ function renderConnections(fullConfig = FULL_CONFIG, apartmentSlug = 'wohnung-os
       sharedKnxStatus={{ connected: false, msg: 'offline' }}
       hueStatus={{ paired: false, bridgeIp: '' }}
       navigateToApartment={navigateToApartment}
+      configProtectionEnabled={fullConfig.building?.configProtectionEnabled === true}
+      onConfigUnlocked={vi.fn()}
+      onConfigLockRemoved={vi.fn()}
     />
   );
 }
@@ -103,6 +109,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   anchorClick.mockReset();
   api.updateConfig.mockImplementation(async (nextConfig) => ({ success: true, config: nextConfig }));
+  api.verifyConfigPassword.mockResolvedValue({ success: true });
+  api.setConfigPassword.mockResolvedValue({ success: true, config: { ...FULL_CONFIG, building: { ...FULL_CONFIG.building, configProtectionEnabled: true } } });
+  api.removeConfigPassword.mockResolvedValue({ success: true, config: { ...FULL_CONFIG, building: { ...FULL_CONFIG.building, configProtectionEnabled: false } } });
   api.discoverHueBridge.mockResolvedValue({ success: true, bridges: [{ internalipaddress: '192.168.1.65' }] });
   api.pairHueBridge.mockResolvedValue({ success: true, apiKey: 'new-api-key' });
   api.unpairHueBridge.mockResolvedValue({ success: true });
@@ -147,6 +156,42 @@ describe('Connections — multi-apartment setup grouping', () => {
     expect(screen.getAllByText(hasTextContent(/edit this in wohnung ost only/i)).length).toBeGreaterThan(0);
     expect(screen.queryByRole('checkbox', { name: /use main line apartment's ets xml/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /manage main line ets xml/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('Connections — configuration password', () => {
+  it('enables the configuration password from setup', async () => {
+    const user = userEvent.setup();
+    renderConnections();
+
+    await user.type(screen.getByPlaceholderText(/enter a password/i), 'familie');
+    await user.type(screen.getByPlaceholderText(/enter the password again/i), 'familie');
+    await user.click(screen.getByRole('button', { name: /enable password/i }));
+
+    await waitFor(() => {
+      expect(api.setConfigPassword).toHaveBeenCalledWith('familie');
+    });
+  });
+
+  it('re-prompts for the current password before removing it', async () => {
+    const user = userEvent.setup();
+    renderConnections({
+      ...FULL_CONFIG,
+      building: {
+        ...FULL_CONFIG.building,
+        configProtectionEnabled: true,
+      },
+    });
+
+    await user.click(screen.getByRole('button', { name: /remove password/i }));
+    const dialog = screen.getByText('Remove Configuration Password').closest('.modal-content');
+    await user.type(within(dialog).getByPlaceholderText(/enter password/i), 'familie');
+    await user.click(within(dialog).getByRole('button', { name: /remove password/i }));
+
+    await waitFor(() => {
+      expect(api.verifyConfigPassword).toHaveBeenCalledWith('familie');
+      expect(api.removeConfigPassword).toHaveBeenCalledWith('familie');
+    });
   });
 });
 

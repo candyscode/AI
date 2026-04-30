@@ -29,6 +29,33 @@ export const updateConfig = async (data) => {
   return res.json();
 };
 
+export const verifyConfigPassword = async (password) => {
+  const res = await fetch(`${API_BASE}/config-protection/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password })
+  });
+  return res.json();
+};
+
+export const setConfigPassword = async (password) => {
+  const res = await fetch(`${API_BASE}/config-protection`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password })
+  });
+  return res.json();
+};
+
+export const removeConfigPassword = async (password) => {
+  const res = await fetch(`${API_BASE}/config-protection`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password })
+  });
+  return res.json();
+};
+
 export const loadDevConfig = async () => {
   const res = await fetch(`${API_BASE}/dev/load-config`, {
     method: 'POST'

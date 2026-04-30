@@ -195,6 +195,7 @@ function migrateLegacyConfig(input) {
     version: 2,
     building: {
       sharedAccessApartmentId: 'apartment_1',
+      configurationPassword: '',
       sharedUsesApartmentImportedGroupAddresses: false,
       sharedInfos,
       sharedAreas: [],
@@ -244,6 +245,9 @@ function normalizeConfigShape(input) {
     version: 2,
     building: {
       sharedAccessApartmentId,
+      configurationPassword: typeof source?.building?.configurationPassword === 'string'
+        ? source.building.configurationPassword
+        : '',
       sharedUsesApartmentImportedGroupAddresses: source?.building?.sharedUsesApartmentImportedGroupAddresses === true,
       sharedInfos: Array.isArray(source?.building?.sharedInfos)
         ? source.building.sharedInfos.map(normalizeSharedInfo).filter(Boolean)
@@ -257,6 +261,18 @@ function normalizeConfigShape(input) {
         : '',
     },
     apartments,
+  };
+}
+
+function buildPublicConfig(input) {
+  const normalized = normalizeConfigShape(input);
+  return {
+    ...normalized,
+    building: {
+      ...normalized.building,
+      configProtectionEnabled: !!normalized.building.configurationPassword,
+      configurationPassword: undefined,
+    },
   };
 }
 
@@ -299,6 +315,7 @@ module.exports = {
   getApartmentBySlug,
   getSharedAccessApartment,
   migrateLegacyConfig,
+  buildPublicConfig,
   normalizeConfigShape,
   normalizeImportedGroupAddresses,
   normalizeDptString,

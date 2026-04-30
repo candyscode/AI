@@ -12,6 +12,7 @@ const {
   getAllSharedRooms,
   getApartmentById,
   getSharedAccessApartment,
+  buildPublicConfig,
   normalizeArea,
   normalizeConfigShape,
   normalizeImportedGroupAddresses,
@@ -577,7 +578,7 @@ config.apartments.forEach((apartment) => {
 });
 
 app.get('/api/config', (req, res) => {
-  res.json(config);
+  res.json(buildPublicConfig(config));
 });
 
 app.post('/api/config', (req, res) => {
@@ -602,7 +603,51 @@ app.post('/api/config', (req, res) => {
 
   emitAllStatuses();
 
-  res.json({ success: true, config });
+  res.json({ success: true, config: buildPublicConfig(config) });
+});
+
+app.post('/api/config-protection/verify', (req, res) => {
+  const submittedPassword = typeof req.body?.password === 'string' ? req.body.password : '';
+  const currentPassword = config?.building?.configurationPassword || '';
+
+  if (!currentPassword) {
+    res.json({ success: false, enabled: false });
+    return;
+  }
+
+  res.json({ success: submittedPassword === currentPassword, enabled: true });
+});
+
+app.post('/api/config-protection', (req, res) => {
+  const nextPassword = typeof req.body?.password === 'string' ? req.body.password : '';
+
+  if (!nextPassword) {
+    res.status(400).json({ success: false, error: 'password required' });
+    return;
+  }
+
+  config.building.configurationPassword = nextPassword;
+  saveConfig();
+  res.json({ success: true, config: buildPublicConfig(config) });
+});
+
+app.delete('/api/config-protection', (req, res) => {
+  const submittedPassword = typeof req.body?.password === 'string' ? req.body.password : '';
+  const currentPassword = config?.building?.configurationPassword || '';
+
+  if (!currentPassword) {
+    res.json({ success: true, config: buildPublicConfig(config) });
+    return;
+  }
+
+  if (submittedPassword !== currentPassword) {
+    res.status(401).json({ success: false, error: 'Incorrect password' });
+    return;
+  }
+
+  config.building.configurationPassword = '';
+  saveConfig();
+  res.json({ success: true, config: buildPublicConfig(config) });
 });
 
 app.post('/api/dev/load-config', (req, res) => {
@@ -623,7 +668,7 @@ app.post('/api/dev/load-config', (req, res) => {
       startHuePolling(apartment.id);
     });
     emitAllStatuses();
-    res.json({ success: true, config });
+    res.json({ success: true, config: buildPublicConfig(config) });
   } catch (error) {
     console.error('Error parsing config.dev.json', error);
     res.status(500).json({ success: false, error: 'Internal Server Error reading dev config' });
