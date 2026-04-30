@@ -34,6 +34,19 @@ const apartmentContexts = new Map();
 
 let config = normalizeConfigShape({});
 
+function shouldDebugInfoGa(tracking, groupAddress) {
+  const type = tracking?.gaToType?.[groupAddress];
+  const dpt = tracking?.gaToDpt?.[groupAddress];
+  return type === 'info' || (typeof dpt === 'string' && dpt.startsWith('DPT9'));
+}
+
+function logKnxDebug(message, details = {}) {
+  const parts = Object.entries(details)
+    .filter(([, value]) => value !== undefined && value !== '')
+    .map(([key, value]) => `${key}=${value}`);
+  console.log(`[KNX DEBUG] ${message}${parts.length ? ` ${parts.join(' ')}` : ''}`);
+}
+
 function loadConfig() {
   if (!fs.existsSync(CONFIG_FILE)) {
     saveConfig();
@@ -80,10 +93,19 @@ function createApartmentEmitter(apartmentId) {
       }
 
       if (event === 'knx_state_update') {
+        const scope = scopeForGa(data.groupAddress);
+        if (shouldDebugInfoGa(context?.tracking, data.groupAddress)) {
+          logKnxDebug('forwarding state update', {
+            apartmentId,
+            scope,
+            ga: data.groupAddress,
+            value: typeof data.value === 'object' ? JSON.stringify(data.value) : String(data.value),
+          });
+        }
         io.emit('knx_state_update', {
           ...data,
           apartmentId,
-          scope: scopeForGa(data.groupAddress),
+          scope,
         });
         return;
       }
@@ -98,7 +120,7 @@ function ensureApartmentContext(apartmentId) {
 
   const context = {
     apartmentId,
-    knxService: new KnxService(createApartmentEmitter(apartmentId)),
+    knxService: new KnxService(createApartmentEmitter(apartmentId), { label: apartmentId }),
     hueService: new HueService(),
     huePollingInterval: null,
     tracking: {
@@ -227,6 +249,17 @@ function refreshKnxSubscriptions(apartmentId, { requestReads = false } = {}) {
   if (!context) return;
 
   context.tracking = buildKnxTrackingMaps(apartmentId);
+  Array.from(context.tracking.statusGAs).forEach((groupAddress) => {
+    if (!shouldDebugInfoGa(context.tracking, groupAddress)) return;
+    logKnxDebug('tracking status GA', {
+      apartmentId,
+      scope: context.tracking.sharedGaSet.has(groupAddress) ? 'shared' : 'apartment',
+      ga: groupAddress,
+      type: context.tracking.gaToType[groupAddress],
+      dpt: context.tracking.gaToDpt[groupAddress] || '',
+      requestReads: requestReads ? 'yes' : 'no',
+    });
+  });
   context.knxService.setGaToType(context.tracking.gaToType);
   context.knxService.setGaToDpt(context.tracking.gaToDpt);
   context.knxService.setSceneTriggerCallback((groupAddress, sceneNumber) => {
@@ -862,7 +895,6 @@ app.post('/api/hue/action', async (req, res) => {
 });
 
 io.on('connection', (socket) => {
-  console.log('Client connected to UI');
   emitAllStatuses(socket);
   socket.emit('knx_initial_states', buildStateSnapshot());
 });

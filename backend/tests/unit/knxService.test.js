@@ -111,6 +111,8 @@ describe('KnxService — unit', () => {
       jest.runAllTimers();
       capturedHandlers.connected();
       capturedHandlers.disconnected();
+      expect(service.isConnected).toBe(true);
+      jest.advanceTimersByTime(12000);
       expect(service.isConnected).toBe(false);
       jest.useRealTimers();
     });
@@ -135,6 +137,56 @@ describe('KnxService — unit', () => {
       service.connection = mockConn;
       service.connect('192.168.1.86', 3671);
       expect(mockConn.Disconnect).toHaveBeenCalled();
+      jest.useRealTimers();
+    });
+
+    it('waits before emitting offline after an unexpected disconnect', () => {
+      jest.useFakeTimers();
+      const { capturedHandlers } = setupKnxMock();
+      service.connect('192.168.1.85', 3671);
+      jest.runAllTimers();
+      capturedHandlers.connected();
+
+      capturedHandlers.disconnected();
+      expect(io._events.some((event) => event.event === 'knx_status' && event.data.connected === false)).toBe(true);
+      const beforeGrace = io._events.filter((event) => event.event === 'knx_status' && event.data.msg === 'Disconnected from bus');
+      expect(beforeGrace).toHaveLength(0);
+
+      jest.advanceTimersByTime(11999);
+      expect(io._events.some((event) => event.event === 'knx_status' && event.data.msg === 'Disconnected from bus')).toBe(false);
+
+      jest.advanceTimersByTime(1);
+      expect(io._events.some((event) => event.event === 'knx_status' && event.data.msg === 'Disconnected from bus')).toBe(true);
+      jest.useRealTimers();
+    });
+
+    it('keeps status connected if bus telegrams still arrive during the disconnect grace period', () => {
+      jest.useFakeTimers();
+      const { capturedHandlers } = setupKnxMock();
+      service.connect('192.168.1.85', 3671);
+      jest.runAllTimers();
+      capturedHandlers.connected();
+
+      capturedHandlers.disconnected();
+      jest.advanceTimersByTime(6000);
+      capturedHandlers.event('GroupValue_Write', '1.1.5', '1/6/0', Buffer.from([0x00, 0x10]));
+      jest.advanceTimersByTime(6000);
+
+      expect(service.isConnected).toBe(true);
+      expect(io._events.some((event) => event.event === 'knx_status' && event.data.msg === 'Disconnected from bus')).toBe(false);
+      jest.useRealTimers();
+    });
+
+    it('does not emit knx_error for connectionstate keepalive timeouts', () => {
+      jest.useFakeTimers();
+      const { capturedHandlers } = setupKnxMock();
+      service.connect('192.168.1.85', 3671);
+      jest.runAllTimers();
+      capturedHandlers.connected();
+
+      capturedHandlers.error('timed out waiting for CONNECTIONSTATE_RESPONSE');
+      const errEvent = io._events.find(e => e.event === 'knx_error');
+      expect(errEvent).toBeUndefined();
       jest.useRealTimers();
     });
   });

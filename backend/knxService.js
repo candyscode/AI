@@ -28,8 +28,21 @@ function normalizeDptString(dpt) {
   return raw;
 }
 
+function formatKnxDebugValue(value) {
+  if (Buffer.isBuffer(value)) return value.toString('hex');
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (value === null || value === undefined) return String(value);
+
+  try {
+    return JSON.stringify(value);
+  } catch (error) {
+    return '[unserializable]';
+  }
+}
+
 class KnxService {
-  constructor(io) {
+  constructor(io, options = {}) {
     this.connection = null;
     this.io = io;
     this.isConnected = false;
@@ -37,6 +50,12 @@ class KnxService {
     this.gaToType = {};
     this.gaToDpt = {};
     this.sceneTriggerCallback = null;
+    this.manualDisconnect = false;
+    this.logLabel = options.label || 'KNX';
+    this.recentLogTimes = new Map();
+    this.connectionGeneration = 0;
+    this.offlineStatusTimer = null;
+    this.lastBusActivityAt = 0;
   }
 
   setGaToType(map) {
@@ -45,6 +64,54 @@ class KnxService {
 
   setGaToDpt(map) {
     this.gaToDpt = map;
+  }
+
+  shouldDebugGroupAddress(groupAddress) {
+    const type = this.gaToType[groupAddress];
+    const dptString = normalizeDptString(this.gaToDpt[groupAddress]);
+    return type === 'info' || dptString.startsWith('DPT9');
+  }
+
+  logGroupAddressDebug(message, details = {}) {
+    const parts = Object.entries(details)
+      .filter(([, value]) => value !== undefined && value !== '')
+      .map(([key, value]) => `${key}=${value}`);
+    console.log(`[KNX DEBUG][${this.logLabel}] ${message}${parts.length ? ` ${parts.join(' ')}` : ''}`);
+  }
+
+  logLifecycle(message, details = {}, { dedupeKey = message, windowMs = 2500 } = {}) {
+    const now = Date.now();
+    const lastLogAt = this.recentLogTimes.get(dedupeKey) || 0;
+    if (now - lastLogAt < windowMs) return;
+    this.recentLogTimes.set(dedupeKey, now);
+
+    const parts = Object.entries(details)
+      .filter(([, value]) => value !== undefined && value !== '')
+      .map(([key, value]) => `${key}=${value}`);
+    console.log(`[KNX][${this.logLabel}] ${message}${parts.length ? ` ${parts.join(' ')}` : ''}`);
+  }
+
+  clearOfflineStatusTimer() {
+    if (!this.offlineStatusTimer) return;
+    clearTimeout(this.offlineStatusTimer);
+    this.offlineStatusTimer = null;
+  }
+
+  markBusActivity() {
+    this.lastBusActivityAt = Date.now();
+    this.clearOfflineStatusTimer();
+    if (this.isConnected) return;
+    this.isConnected = true;
+    this.io.emit('knx_status', { connected: true, msg: 'Receiving KNX bus telegrams' });
+  }
+
+  scheduleOfflineStatus(message = 'Disconnected from bus', graceMs = 12000) {
+    this.clearOfflineStatusTimer();
+    this.offlineStatusTimer = setTimeout(() => {
+      this.offlineStatusTimer = null;
+      this.isConnected = false;
+      this.io.emit('knx_status', { connected: false, msg: message });
+    }, graceMs);
   }
 
   /**
@@ -56,9 +123,14 @@ class KnxService {
   }
 
   connect(ipAddress, port = 3671, onConnectCallback = null) {
+    this.clearOfflineStatusTimer();
+    this.connectionGeneration += 1;
+    const generation = this.connectionGeneration;
+
     // Disconnect existing connection first, then wait for it to close
     if (this.connection) {
       this._reconnecting = true; // suppress stale 'disconnected' event
+      this.manualDisconnect = true;
       try {
         this.connection.Disconnect();
       } catch (e) {
@@ -69,13 +141,18 @@ class KnxService {
     }
 
     if (!ipAddress) {
-      console.log('No KNX IP address provided in config');
+      this.logLifecycle('No KNX IP configured');
       this._reconnecting = false;
+      this.manualDisconnect = false;
+      this.isConnected = false;
       return;
     }
+    this.manualDisconnect = false;
 
-    console.log(`Connecting to KNX interface at ${ipAddress}:${port}...`);
-    this.io.emit('knx_status', { connected: false, msg: 'Connecting to KNX gateway...' });
+    this.logLifecycle('Connecting to KNX gateway', { ip: ipAddress, port }, { dedupeKey: `connect:${ipAddress}:${port}` });
+    if (!this.isConnected) {
+      this.io.emit('knx_status', { connected: false, msg: 'Connecting to KNX gateway...' });
+    }
 
     // Give the KNX library time to fully close the previous tunnel before opening a new one
     setTimeout(() => {
@@ -83,18 +160,25 @@ class KnxService {
         this.connection = new knx.Connection({
           ipAddr: ipAddress,
           ipPort: port,
+          loglevel: 'error',
           handlers: {
             connected: () => {
-              console.log('Connected to KNX system at', ipAddress);
+              if (generation !== this.connectionGeneration) return;
+              this.logLifecycle('Connected to KNX gateway', { ip: ipAddress, port }, { dedupeKey: `connected:${ipAddress}:${port}`, windowMs: 1000 });
               this._reconnecting = false;
+              this.manualDisconnect = false;
+              this.clearOfflineStatusTimer();
               this.isConnected = true;
+              this.lastBusActivityAt = Date.now();
               this.io.emit('knx_status', { connected: true, msg: 'Connected successfully to bus' });
               if (onConnectCallback) onConnectCallback();
             },
             event: (evt, src, dest, value) => {
+              if (generation !== this.connectionGeneration) return;
               let parsedValue = value;
               const type = this.gaToType[dest];
               const dptString = this.gaToDpt[dest];
+              const shouldDebug = this.shouldDebugGroupAddress(dest);
 
               if (Buffer.isBuffer(value)) {
                 if (dptString) {
@@ -117,7 +201,20 @@ class KnxService {
                 }
               }
 
+              if (shouldDebug && (evt === 'GroupValue_Write' || evt === 'GroupValue_Response')) {
+                this.logGroupAddressDebug('telegram decoded', {
+                  evt,
+                  src,
+                  dest,
+                  type,
+                  dpt: dptString ? normalizeDptString(dptString) : '',
+                  raw: formatKnxDebugValue(value),
+                  parsed: formatKnxDebugValue(parsedValue),
+                });
+              }
+
               if (evt === 'GroupValue_Write' || evt === 'GroupValue_Response') {
+                this.markBusActivity();
                 this.deviceStates[dest] = parsedValue;
                 this.io.emit('knx_state_update', { groupAddress: dest, value: parsedValue });
 
@@ -135,18 +232,23 @@ class KnxService {
               }
             },
             error: (connstatus) => {
+              if (generation !== this.connectionGeneration) return;
               console.error('KNX Connection Error:', connstatus);
-              this.isConnected = false;
-              this.io.emit('knx_error', { msg: `Bus access failed: ${connstatus}. Check IP interface.` });
-              this.io.emit('knx_status', { connected: false, msg: 'Disconnected from bus' });
+              const isKeepaliveTimeout =
+                typeof connstatus === 'string' && connstatus.includes('CONNECTIONSTATE_RESPONSE');
+              if (!isKeepaliveTimeout) {
+                this.io.emit('knx_error', { msg: `Bus access failed: ${connstatus}. Check IP interface.` });
+              }
+              this.scheduleOfflineStatus('Disconnected from bus');
             },
             disconnected: () => {
-              console.log('KNX Disconnected');
-              this.isConnected = false;
+              if (generation !== this.connectionGeneration) return;
+              this.logLifecycle('Disconnected from KNX gateway', { ip: ipAddress, port }, { dedupeKey: `disconnected:${ipAddress}:${port}` });
               // Don't broadcast offline if we're intentionally reconnecting to a new IP
               if (!this._reconnecting) {
-                this.io.emit('knx_status', { connected: false, msg: 'Disconnected from bus' });
+                this.scheduleOfflineStatus('Disconnected from bus');
               }
+              this.manualDisconnect = false;
             }
           }
         });
@@ -163,7 +265,14 @@ class KnxService {
     if (!this.isConnected || !this.connection) return;
     try {
       this.connection.read(groupAddress);
-      console.log(`Requested status read for ${groupAddress}`);
+      console.log(`[KNX][${this.logLabel}] Requested status read for ${groupAddress}`);
+      if (this.shouldDebugGroupAddress(groupAddress)) {
+        this.logGroupAddressDebug('read requested', {
+          dest: groupAddress,
+          type: this.gaToType[groupAddress],
+          dpt: normalizeDptString(this.gaToDpt[groupAddress]),
+        });
+      }
     } catch(e) {
       console.error(`Error requesting status read for ${groupAddress}:`, e.message);
     }
@@ -177,14 +286,14 @@ class KnxService {
     if (dpt === 'DPT5.001') {
       try {
         this.connection.write(groupAddress, value, 'DPT5.001');
-        console.log(`Writing percentage ${value}% to ${groupAddress}`);
+        console.log(`[KNX][${this.logLabel}] Writing percentage ${value}% to ${groupAddress}`);
       } catch (e) {
         throw new Error(`Failed to write percentage to ${groupAddress}: ` + e.message);
       }
     } else {
       try {
         this.connection.write(groupAddress, value ? 1 : 0, 'DPT1');
-        console.log(`Writing switch ${value ? 'ON' : 'OFF'} to ${groupAddress}`);
+        console.log(`[KNX][${this.logLabel}] Writing switch ${value ? 'ON' : 'OFF'} to ${groupAddress}`);
       } catch (e) {
         throw new Error(`Failed to write boolean to ${groupAddress}: ` + e.message);
       }
@@ -201,7 +310,7 @@ class KnxService {
     // Scene numbers 1-64 map to bus values 0-63 (offset by -1)
     const busValue = Math.max(0, Math.min(63, validSceneNum - 1));
     
-    console.log(`Writing scene ${validSceneNum} (bus val: ${busValue}) to ${groupAddress}`);
+    console.log(`[KNX][${this.logLabel}] Writing scene ${validSceneNum} (bus val: ${busValue}) to ${groupAddress}`);
     this.connection.write(groupAddress, busValue, 'DPT17.001');
   }
 
@@ -211,7 +320,7 @@ class KnxService {
     }
     // For 1-bit values like on/off (DPT 1.001)
     const busValue = value ? 1 : 0;
-    console.log(`Writing bit ${busValue} to ${groupAddress}`);
+    console.log(`[KNX][${this.logLabel}] Writing bit ${busValue} to ${groupAddress}`);
     this.connection.write(groupAddress, busValue, 'DPT1.001');
   }
 
@@ -220,9 +329,10 @@ class KnxService {
        throw new Error('Not connected to KNX bus');
      }
      // For percentages 0-100% (DPT 5.001)
-     console.log(`Writing percentage ${value}% to ${groupAddress}`);
+     console.log(`[KNX][${this.logLabel}] Writing percentage ${value}% to ${groupAddress}`);
      this.connection.write(groupAddress, parseInt(value, 10), 'DPT5.001');
   }
+
 }
 
 module.exports = KnxService;
