@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  X, Check, Plus, GripVertical, Trash2,
+  X, Check, Plus, GripVertical, Trash2, HelpCircle,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, TouchSensor, KeyboardSensor, useSensor, useSensors,
@@ -125,78 +125,91 @@ export default function RoutineModal({ routine, floors, sunTriggerConfigured, on
         </div>
 
         {/* Basic fields */}
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
-          <div className="settings-field" style={{ flex: 2, minWidth: '200px' }}>
-            <label className="settings-field-label">Name</label>
-            <input
-              className="form-input"
-              value={draft.name}
-              onChange={(e) => update('name', e.target.value)}
-              placeholder="e.g. Morning Routine"
-              autoFocus
-            />
-          </div>
-          <div className="settings-field" style={{ flex: 1.5, minWidth: 'min(100%, 260px)' }}>
-            <label className="settings-field-label">Trigger</label>
-            <div className="routine-trigger-selector">
-              <button
-                className={`routine-trigger-btn ${draft.triggerType === 'time' ? 'active' : ''}`}
-                onClick={() => update('triggerType', 'time')}
-              >
-                Time
-              </button>
-              <button
-                className={`routine-trigger-btn ${draft.triggerType === 'sunrise' ? 'active' : ''}`}
-                onClick={() => update('triggerType', 'sunrise')}
-                title={!sunTriggerConfigured ? 'Sun Trigger GA not configured in Setup' : ''}
-              >
-                Sunrise
-              </button>
-              <button
-                className={`routine-trigger-btn ${draft.triggerType === 'sunset' ? 'active' : ''}`}
-                onClick={() => update('triggerType', 'sunset')}
-                title={!sunTriggerConfigured ? 'Sun Trigger GA not configured in Setup' : ''}
-              >
-                Sunset
-              </button>
-            </div>
-            {!sunTriggerConfigured && draft.triggerType !== 'time' && (
-              <div style={{ fontSize: '0.75rem', color: '#fca5a5', marginTop: '0.35rem' }}>
-                Note: Sun trigger requires GA configuration in Building Setup.
-              </div>
-            )}
-          </div>
-          {draft.triggerType === 'time' && (
-            <div className="settings-field" style={{ width: '110px' }}>
-              <label className="settings-field-label">Time</label>
+        <div className="routine-modal-fields">
+          <div className="routine-modal-row routine-modal-row--primary">
+            <div className="settings-field routine-modal-name-field">
+              <label className="settings-field-label">Name</label>
               <input
                 className="form-input"
+                value={draft.name}
+                onChange={(e) => update('name', e.target.value)}
+                placeholder="e.g. Morning Routine"
+                autoFocus
+              />
+            </div>
+
+            <div className="settings-field routine-modal-frequency-field">
+              <label className="settings-field-label">
+                Frequency
+                <span className="ga-tooltip-wrap">
+                  <HelpCircle size={11} className="ga-tooltip-icon" />
+                  <span className="ga-tooltip-bubble">Currently, only daily is available.</span>
+                </span>
+              </label>
+              <input className="form-input" value="Daily" readOnly style={{ opacity: 0.72 }} />
+            </div>
+
+            <div className="settings-field routine-modal-enabled-field">
+              <label className="settings-field-label">Enabled</label>
+              <button
+                className={`routine-toggle-switch ${draft.enabled ? 'enabled' : ''}`}
+                onClick={() => update('enabled', !draft.enabled)}
+                aria-label={draft.enabled ? 'Enabled' : 'Disabled'}
+                title={draft.enabled ? 'Click to disable' : 'Click to enable'}
+              >
+                <span className="routine-toggle-knob" />
+              </button>
+            </div>
+          </div>
+
+          <div className="routine-modal-row routine-modal-row--secondary">
+            <div className="settings-field routine-modal-trigger-field">
+              <label className="settings-field-label">Trigger</label>
+              <div className="routine-trigger-selector">
+                <button
+                  className={`routine-trigger-btn ${draft.triggerType === 'time' ? 'active' : ''}`}
+                  onClick={() => update('triggerType', 'time')}
+                >
+                  Time
+                </button>
+                <button
+                  className={`routine-trigger-btn ${draft.triggerType === 'sunrise' ? 'active' : ''}`}
+                  onClick={() => update('triggerType', 'sunrise')}
+                  title={!sunTriggerConfigured ? 'Sun Trigger GA not configured in Setup' : ''}
+                >
+                  Sunrise
+                </button>
+                <button
+                  className={`routine-trigger-btn ${draft.triggerType === 'sunset' ? 'active' : ''}`}
+                  onClick={() => update('triggerType', 'sunset')}
+                  title={!sunTriggerConfigured ? 'Sun Trigger GA not configured in Setup' : ''}
+                >
+                  Sunset
+                </button>
+              </div>
+              {!sunTriggerConfigured && draft.triggerType !== 'time' && (
+                <div className="routine-trigger-note">
+                  Note: Sun trigger requires GA configuration in Building Setup.
+                </div>
+              )}
+            </div>
+
+            <div className={`settings-field routine-modal-time-field ${draft.triggerType === 'time' ? '' : 'routine-modal-time-field--hidden'}`}>
+              <label className="settings-field-label">Time</label>
+              <input
+                className="form-input routine-time-input"
                 type="time"
                 value={draft.time}
                 onChange={(e) => update('time', e.target.value)}
+                tabIndex={draft.triggerType === 'time' ? 0 : -1}
+                aria-hidden={draft.triggerType === 'time' ? 'false' : 'true'}
               />
             </div>
-          )}
-          <div className="settings-field" style={{ width: '120px' }}>
-            <label className="settings-field-label">Frequency</label>
-            <input className="form-input" value="Daily" readOnly style={{ opacity: 0.6 }} />
-          </div>
-          <div className="settings-field" style={{ width: '100px' }}>
-            <label className="settings-field-label">Enabled</label>
-            <button
-              className={`routine-toggle-switch ${draft.enabled ? 'enabled' : ''}`}
-              style={{ marginTop: '0.5rem' }}
-              onClick={() => update('enabled', !draft.enabled)}
-              aria-label={draft.enabled ? 'Enabled' : 'Disabled'}
-              title={draft.enabled ? 'Click to disable' : 'Click to enable'}
-            >
-              <span className="routine-toggle-knob" />
-            </button>
           </div>
         </div>
 
         {/* Actions */}
-        <div style={{ marginBottom: '1.25rem' }}>
+        <div className="routine-actions-section">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
             <label className="settings-field-label" style={{ margin: 0 }}>
               Actions <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>({draft.actions.length})</span>
