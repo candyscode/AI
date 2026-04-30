@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Check, X, AlertTriangle, Info, Thermometer, Wind, Sun } from 'lucide-react';
+import { Plus, Check, X, AlertTriangle, Info, Thermometer, Wind, Sun } from 'lucide-react';
 
 function ItemSection({
   title,
@@ -167,7 +167,7 @@ function ItemSection({
                 })}
                 title="Browse ETS addresses"
               >
-                <Search size={14} />
+                Browse
               </button>
             </div>
             {resolveGroupAddressName?.(item.statusGroupAddress || '', type) && (
