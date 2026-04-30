@@ -130,6 +130,29 @@ describe('Automation page', () => {
     ));
   });
 
+  it('selects sunrise trigger', async () => {
+    // Add sun trigger config so modal doesn't show missing config warnings
+    const props = mockProps({ sunTrigger: { groupAddress: '7/0/0', bus: 'main', dayValue: 1 } });
+    render(<Automation {...props} />);
+    fireEvent.click(screen.getAllByText(/add routine/i)[0]);
+
+    fireEvent.change(screen.getByPlaceholderText(/morning routine/i), { target: { value: 'Dawn' } });
+    fireEvent.click(screen.getByText('Sunrise'));
+
+    fireEvent.click(screen.getByRole('button', { name: /add action/i }));
+    await waitFor(() => expect(screen.getByText('Bright')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Bright'));
+
+    fireEvent.click(screen.getByText(/create routine/i));
+    await waitFor(() => expect(updateConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        automations: expect.arrayContaining([
+          expect.objectContaining({ name: 'Dawn', triggerType: 'sunrise' }),
+        ]),
+      })
+    ));
+  });
+
   it('toggle enable/disable calls updateConfig', async () => {
     const props = mockProps({
       automations: [{

@@ -64,13 +64,14 @@ function validate(routine) {
   return null;
 }
 
-export default function RoutineModal({ routine, floors, onSave, onClose }) {
+export default function RoutineModal({ routine, floors, sunTriggerConfigured, onSave, onClose }) {
   const isNew = !routine;
   const [draft, setDraft] = useState(() => routine ? { ...routine, actions: [...(routine.actions || [])] } : {
     id: `automation_${Date.now()}`,
     name: '',
     enabled: true,
     time: '08:00',
+    triggerType: 'time',
     frequency: 'daily',
     actions: [],
     lastRunAt: null,
@@ -135,15 +136,47 @@ export default function RoutineModal({ routine, floors, onSave, onClose }) {
               autoFocus
             />
           </div>
-          <div className="settings-field" style={{ width: '130px' }}>
-            <label className="settings-field-label">Time</label>
-            <input
-              className="form-input"
-              type="time"
-              value={draft.time}
-              onChange={(e) => update('time', e.target.value)}
-            />
+          <div className="settings-field" style={{ flex: 1.5, minWidth: 'min(100%, 260px)' }}>
+            <label className="settings-field-label">Trigger</label>
+            <div className="routine-trigger-selector">
+              <button
+                className={`routine-trigger-btn ${draft.triggerType === 'time' ? 'active' : ''}`}
+                onClick={() => update('triggerType', 'time')}
+              >
+                Time
+              </button>
+              <button
+                className={`routine-trigger-btn ${draft.triggerType === 'sunrise' ? 'active' : ''}`}
+                onClick={() => update('triggerType', 'sunrise')}
+                title={!sunTriggerConfigured ? 'Sun Trigger GA not configured in Setup' : ''}
+              >
+                Sunrise
+              </button>
+              <button
+                className={`routine-trigger-btn ${draft.triggerType === 'sunset' ? 'active' : ''}`}
+                onClick={() => update('triggerType', 'sunset')}
+                title={!sunTriggerConfigured ? 'Sun Trigger GA not configured in Setup' : ''}
+              >
+                Sunset
+              </button>
+            </div>
+            {!sunTriggerConfigured && draft.triggerType !== 'time' && (
+              <div style={{ fontSize: '0.75rem', color: '#fca5a5', marginTop: '0.35rem' }}>
+                Note: Sun trigger requires GA configuration in Building Setup.
+              </div>
+            )}
           </div>
+          {draft.triggerType === 'time' && (
+            <div className="settings-field" style={{ width: '110px' }}>
+              <label className="settings-field-label">Time</label>
+              <input
+                className="form-input"
+                type="time"
+                value={draft.time}
+                onChange={(e) => update('time', e.target.value)}
+              />
+            </div>
+          )}
           <div className="settings-field" style={{ width: '120px' }}>
             <label className="settings-field-label">Frequency</label>
             <input className="form-input" value="Daily" readOnly style={{ opacity: 0.6 }} />
