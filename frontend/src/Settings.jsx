@@ -19,10 +19,23 @@ import { getImportedGroupAddressDpt, getImportedGroupAddressName } from './group
 // ── Migration ─────────────────────────────────────────────
 function migrateRooms(inputRooms) {
   return inputRooms.map(room => {
-    if (room.scenes !== undefined) return room;
+    if (room.scenes !== undefined) {
+      return {
+        ...room,
+        scenes: Array.isArray(room.scenes) ? room.scenes : [],
+        functions: Array.isArray(room.functions) ? room.functions : [],
+      };
+    }
     const sceneFuncs = (room.functions || []).filter(f => f.type === 'scene');
     const otherFuncs = (room.functions || []).filter(f => f.type !== 'scene');
-    if (sceneFuncs.length === 0) return { ...room, sceneGroupAddress: '', scenes: [] };
+    if (sceneFuncs.length === 0) {
+      return {
+        ...room,
+        sceneGroupAddress: '',
+        scenes: [],
+        functions: Array.isArray(room.functions) ? room.functions : [],
+      };
+    }
     const gaCounts = {};
     sceneFuncs.forEach(f => { gaCounts[f.groupAddress] = (gaCounts[f.groupAddress] || 0) + 1; });
     const primaryGA = Object.entries(gaCounts).sort((a, b) => b[1] - a[1])[0][0];
@@ -134,6 +147,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
   });
   const [activeTab, setActiveTab] = useState('rooms');
   const [newRoomName, setNewRoomName] = useState('');
+  const [expandedRoomIds, setExpandedRoomIds] = useState(() => new Set());
   const [roomDragActive, setRoomDragActive] = useState(false);
   const [roomDropTargetFloorId, setRoomDropTargetFloorId] = useState(null);
   const [draggedRoom, setDraggedRoom] = useState(null);
@@ -193,6 +207,14 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     const nextFloors = migrateConfig(config);
     floorsRef.current = nextFloors;
     setFloors(nextFloors);
+    setExpandedRoomIds((prev) => {
+      const validRoomIds = new Set(nextFloors.flatMap((floor) => floor.rooms.map((room) => room.id)));
+      const nextExpanded = new Set();
+      prev.forEach((roomId) => {
+        if (validRoomIds.has(roomId)) nextExpanded.add(roomId);
+      });
+      return nextExpanded;
+    });
     setSharedInfos(Array.isArray(config.sharedInfos) ? config.sharedInfos : []);
     setAlarms(Array.isArray(config.alarms) ? config.alarms : []);
     setActiveFloorId(migrateConfig(config)[0]?.id || null);
@@ -375,8 +397,13 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
       danger: true,
     });
     if (!confirmed) return;
+    setExpandedRoomIds((prev) => {
+      const next = new Set(prev);
+      next.delete(roomId);
+      return next;
+    });
     const updated = updateFloorRooms(floorId, rooms => rooms.filter(r => r.id !== roomId));
-    try { await saveFloors(updated); addToast('Room deleted', 'success'); fetchConfig(); }
+    try { await saveFloors(updated); addToast('Room deleted', 'success'); }
     catch { addToast('Failed to delete room', 'error'); }
   };
 
@@ -413,7 +440,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     for (const f of floorsRef.current) {
       const room = f.rooms.find(r => r.id === roomId);
       if (room) {
-        const updated = updateRoom(f.id, roomId, { scenes: room.scenes.filter(s => s.id !== sceneId) });
+        const updated = updateRoom(f.id, roomId, { scenes: (room.scenes || []).filter(s => s.id !== sceneId) });
         saveFloors(updated).catch(() => addToast('Failed to save room scenes', 'error'));
         return;
       }
@@ -425,7 +452,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     for (const f of floorsRef.current) {
       const room = f.rooms.find(r => r.id === roomId);
       if (room) {
-        const updated = updateRoom(f.id, roomId, { scenes: room.scenes.map(s => s.id !== sceneId ? s : { ...s, [key]: val }) });
+        const updated = updateRoom(f.id, roomId, { scenes: (room.scenes || []).map(s => s.id !== sceneId ? s : { ...s, [key]: val }) });
         if (options.saveImmediately) saveFloors(updated).catch(() => addToast('Failed to save room scenes', 'error'));
         return;
       }
@@ -449,9 +476,14 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
   // ── Function handlers ────────────────────────────────────
   const handleAddFunction = async (floorId, roomId) => {
     const updated = updateFloorRooms(floorId, rooms => rooms.map(r => r.id !== roomId ? r : {
-      ...r, functions: [...r.functions, { id: Date.now().toString(), name: '', type: 'switch', groupAddress: '' }]
+      ...r, functions: [...(r.functions || []), { id: Date.now().toString(), name: '', type: 'switch', groupAddress: '' }]
     }));
-    try { await saveFloors(updated); fetchConfig(); } catch { addToast('Failed to add function', 'error'); }
+    setExpandedRoomIds((prev) => {
+      const next = new Set(prev);
+      next.add(roomId);
+      return next;
+    });
+    try { await saveFloors(updated); } catch { addToast('Failed to add function', 'error'); }
   };
 
   const handleUpdateFunction = (roomId, funcId, key, val, options = {}) => {
@@ -459,7 +491,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
       const room = f.rooms.find(r => r.id === roomId);
       if (room) {
         const updated = updateFloorRooms(f.id, rooms => rooms.map(r => r.id !== roomId ? r : {
-          ...r, functions: r.functions.map(fn => fn.id !== funcId ? fn : { ...fn, [key]: val })
+          ...r, functions: (r.functions || []).map(fn => fn.id !== funcId ? fn : { ...fn, [key]: val })
         }));
         if (options.saveImmediately) saveFloors(updated).catch(() => addToast('Failed to save room functions', 'error'));
         return;
@@ -473,12 +505,19 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
       const room = f.rooms.find(r => r.id === roomId);
       if (room) {
         updated = updateFloorRooms(f.id, rooms => rooms.map(r => r.id !== roomId ? r : {
-          ...r, functions: r.functions.filter(fn => fn.id !== funcId)
+          ...r, functions: (r.functions || []).filter(fn => fn.id !== funcId)
         }));
         break;
       }
     }
-    if (updated) { try { await saveFloors(updated); fetchConfig(); } catch {} }
+    if (updated) {
+      setExpandedRoomIds((prev) => {
+        const next = new Set(prev);
+        next.add(roomId);
+        return next;
+      });
+      try { await saveFloors(updated); } catch {}
+    }
   };
 
   // ── Save ─────────────────────────────────────────────────
@@ -623,9 +662,10 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
       if (f.id !== floorId) return f;
       return { ...f, rooms: f.rooms.map(r => {
         if (r.id !== roomId) return r;
-        const oi = r.functions.findIndex(fn => fn.id === active.id);
-        const ni = r.functions.findIndex(fn => fn.id === over.id);
-        return { ...r, functions: arrayMove(r.functions, oi, ni) };
+        const functions = r.functions || [];
+        const oi = functions.findIndex(fn => fn.id === active.id);
+        const ni = functions.findIndex(fn => fn.id === over.id);
+        return { ...r, functions: arrayMove(functions, oi, ni) };
       })};
     });
     commitFloorsState(updated);
@@ -638,9 +678,10 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
       if (f.id !== floorId) return f;
       return { ...f, rooms: f.rooms.map(r => {
         if (r.id !== roomId) return r;
-        const oi = r.scenes.findIndex(s => s.id === active.id);
-        const ni = r.scenes.findIndex(s => s.id === over.id);
-        return { ...r, scenes: arrayMove(r.scenes, oi, ni) };
+        const scenes = r.scenes || [];
+        const oi = scenes.findIndex(s => s.id === active.id);
+        const ni = scenes.findIndex(s => s.id === over.id);
+        return { ...r, scenes: arrayMove(scenes, oi, ni) };
       })};
     });
     commitFloorsState(updated);
@@ -660,10 +701,10 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     setHueLampsLoading(false);
   };
 
-  const selectHueLamp = (lamp) => {
-    const { roomId, floorId } = hueLampModal;
-    const updated = updateFloorRooms(floorId, rooms => rooms.map(r => r.id !== roomId ? r : {
-      ...r, functions: [...r.functions, { id: Date.now().toString(), name: lamp.name, originalHueName: lamp.name, type: 'hue', hueLightId: lamp.id, iconType: 'lightbulb' }]
+    const selectHueLamp = (lamp) => {
+      const { roomId, floorId } = hueLampModal;
+      const updated = updateFloorRooms(floorId, rooms => rooms.map(r => r.id !== roomId ? r : {
+      ...r, functions: [...(r.functions || []), { id: Date.now().toString(), name: lamp.name, originalHueName: lamp.name, type: 'hue', hueLightId: lamp.id, iconType: 'lightbulb' }]
     }));
     saveFloors(updated).catch(() => addToast('Failed to save Hue lamp', 'error'));
     setHueLampSearch(''); setHueLampModal({ open: false, roomId: null, floorId: null });
@@ -727,7 +768,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
         for (const f of floors) {
           const room = f.rooms.find(r => r.id === roomId);
           if (room) {
-            updateRoom(f.id, roomId, { scenes: room.scenes.map(s => s.id !== sceneId ? s : { ...s, hueSceneId: hueScene.id, hueSceneName: hueScene.name }) });
+            updateRoom(f.id, roomId, { scenes: (room.scenes || []).map(s => s.id !== sceneId ? s : { ...s, hueSceneId: hueScene.id, hueSceneName: hueScene.name }) });
             break;
           }
         }
@@ -745,7 +786,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
       for (const f of floorsRef.current) {
         const room = f.rooms.find(r => r.id === roomId);
         if (room) {
-          updateRoom(f.id, roomId, { scenes: room.scenes.map(s => s.id !== sceneId ? s : { ...s, hueSceneId: null, hueSceneName: null }) });
+          updateRoom(f.id, roomId, { scenes: (room.scenes || []).map(s => s.id !== sceneId ? s : { ...s, hueSceneId: null, hueSceneName: null }) });
           break;
         }
       }
@@ -852,7 +893,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
         const room = f.rooms.find(r => r.id === roomId);
         if (room) {
           updated = updateFloorRooms(f.id, rooms => rooms.map(r => r.id !== roomId ? r : {
-            ...r, functions: r.functions.map(fn => fn.id !== target.functionId ? fn : { ...fn, [target.field]: groupAddress.address })
+            ...r, functions: (r.functions || []).map(fn => fn.id !== target.functionId ? fn : { ...fn, [target.field]: groupAddress.address })
           }));
           break;
         }
@@ -874,8 +915,13 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     }
     const newFunction = { id: Date.now().toString(), name: groupAddress.name, type: groupAddress.functionType || 'switch', groupAddress: groupAddress.address };
     if (newFunction.type === 'switch') newFunction.iconType = 'lightbulb';
-    const updated = updateFloorRooms(floorId, rooms => rooms.map(r => r.id !== roomId ? r : { ...r, functions: [...r.functions, newFunction] }));
-    try { await saveFloors(updated); addToast(`Added "${groupAddress.name}" from ETS`, 'success'); fetchConfig(); closeGroupAddressModal(); }
+    const updated = updateFloorRooms(floorId, rooms => rooms.map(r => r.id !== roomId ? r : { ...r, functions: [...(r.functions || []), newFunction] }));
+    setExpandedRoomIds((prev) => {
+      const next = new Set(prev);
+      next.add(roomId);
+      return next;
+    });
+    try { await saveFloors(updated); addToast(`Added "${groupAddress.name}" from ETS`, 'success'); closeGroupAddressModal(); }
     catch { addToast('Failed to add ETS function', 'error'); }
   };
 
@@ -998,6 +1044,15 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
                   onSceneDragEnd={onSceneDragEnd}
                   sensors={sensors}
                   resolveGroupAddressName={(address) => resolveGroupAddressNameForFloor(activeFloor.id, address)}
+                  expanded={expandedRoomIds.has(room.id)}
+                  onExpandedChange={(nextExpanded) => {
+                    setExpandedRoomIds((prev) => {
+                      const next = new Set(prev);
+                      if (nextExpanded) next.add(room.id);
+                      else next.delete(room.id);
+                      return next;
+                    });
+                  }}
                 />
               ))}
             </SortableContext>

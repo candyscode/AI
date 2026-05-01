@@ -321,11 +321,15 @@ function CollapsibleRoomCard({
   openHueSceneModal, openHueRoomModal, openHueLampModal, openGroupAddressModal,
   hueStatus, onFuncDragEnd, onSceneDragEnd, sensors,
   resolveGroupAddressName,
+  expanded,
+  onExpandedChange,
 }) {
-  const [expanded, setExpanded] = useState(import.meta.env.MODE === 'test');
+  const [internalExpanded, setInternalExpanded] = useState(import.meta.env.MODE === 'test');
   const [renamingRoom, setRenamingRoom] = useState(false);
   const [roomNameDraft, setRoomNameDraft] = useState(room.name);
   const roomNameInputRef = useRef(null);
+  const isExpandedControlled = expanded !== undefined;
+  const isExpanded = isExpandedControlled ? expanded : internalExpanded;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: room.id,
     data: { type: 'room', roomId: room.id, floorId }
@@ -338,6 +342,12 @@ function CollapsibleRoomCard({
 
   const totalFuncs = (room.functions || []).length;
   const totalScenes = (room.scenes || []).length;
+
+  const setExpandedState = (next) => {
+    const resolvedNext = typeof next === 'function' ? next(isExpanded) : next;
+    if (!isExpandedControlled) setInternalExpanded(resolvedNext);
+    onExpandedChange?.(resolvedNext);
+  };
 
   const startRoomRename = (e) => {
     e.stopPropagation();
@@ -360,13 +370,13 @@ function CollapsibleRoomCard({
   const funcIds = (room.functions || []).map(f => f.id);
 
   return (
-    <div ref={setNodeRef} style={style} className={`room-settings-card ${expanded ? 'expanded' : 'collapsed'}`}>
-      <div className="room-settings-header room-collapse-header" onClick={() => setExpanded(e => !e)}>
+    <div ref={setNodeRef} style={style} className={`room-settings-card ${isExpanded ? 'expanded' : 'collapsed'}`}>
+      <div className="room-settings-header room-collapse-header" onClick={() => setExpandedState(prev => !prev)}>
         <span className="drag-handle room-drag-handle" {...attributes} {...listeners}
           title="Drag to reorder" onClick={e => e.stopPropagation()}>
           <GripVertical size={20} />
         </span>
-        <ChevronDown size={16} className={`room-collapse-chevron ${expanded ? 'open' : ''}`} />
+        <ChevronDown size={16} className={`room-collapse-chevron ${isExpanded ? 'open' : ''}`} />
         <div className="room-name-editable" onClick={e => e.stopPropagation()}>
           {renamingRoom ? (
             <input
@@ -402,8 +412,8 @@ function CollapsibleRoomCard({
         </div>
       </div>
 
-      {expanded && (
-        <div className="room-card-body">
+      {isExpanded && (
+        <div className="room-card-body" onClick={e => e.stopPropagation()}>
           {/* Room Scenes */}
           <div className="room-section">
             <h4 className="section-label">Room Scenes</h4>
@@ -466,10 +476,10 @@ function CollapsibleRoomCard({
                     ))}
                   </div>
                   <div className="scene-actions-row">
-                    <button className="btn-secondary-sm scene-add-btn scene-actions-row__add" onClick={() => handleAddScene(floorId, room.id, 'light')}>
+                    <button className="btn-secondary-sm scene-add-btn scene-actions-row__add" onClick={(e) => { e.stopPropagation(); handleAddScene(floorId, room.id, 'light'); }}>
                       <Plus size={13} /> Add Light Scene
                     </button>
-                    <button className="btn-secondary-sm btn-purple-sm scene-actions-row__generate" onClick={() => handleGenerateBaseScenes(floorId, room.id)}>
+                    <button className="btn-secondary-sm btn-purple-sm scene-actions-row__generate" onClick={(e) => { e.stopPropagation(); handleGenerateBaseScenes(floorId, room.id); }}>
                       <Sparkles size={13} /> Generate Base Scenes
                     </button>
                   </div>
@@ -483,7 +493,7 @@ function CollapsibleRoomCard({
                         hueStatus={hueStatus} openHueSceneModal={openHueSceneModal} persistRoomChanges={persistRoomChanges} />
                     ))}
                   </div>
-                  <button className="btn-secondary-sm scene-add-btn" onClick={() => handleAddScene(floorId, room.id, 'shade')}>
+                  <button className="btn-secondary-sm scene-add-btn" onClick={(e) => { e.stopPropagation(); handleAddScene(floorId, room.id, 'shade'); }}>
                     <Plus size={13} /> Add Shade Scene
                   </button>
                 </div>
@@ -512,14 +522,14 @@ function CollapsibleRoomCard({
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontStyle: 'italic', marginBottom: '0.5rem' }}>No additional functions configured.</p>
             )}
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
-              <button className="btn-secondary-sm" onClick={() => handleAddFunction(floorId, room.id)}>
+              <button className="btn-secondary-sm" type="button" onClick={(e) => { e.stopPropagation(); handleAddFunction(floorId, room.id); }}>
                 <Plus size={13} /> Add Function
               </button>
-              <button className="btn-secondary-sm" onClick={() => openGroupAddressModal({ roomId: room.id, floorId, title: 'Select group address', mode: 'any', target: { kind: 'addFunction' }, helperText: 'Select a compatible ETS group address.' })}>
+              <button className="btn-secondary-sm" type="button" onClick={(e) => { e.stopPropagation(); openGroupAddressModal({ roomId: room.id, floorId, title: 'Select group address', mode: 'any', target: { kind: 'addFunction' }, helperText: 'Select a compatible ETS group address.' }); }}>
                 <FileText size={13} /> Select from ETS
               </button>
               {hueStatus && hueStatus.paired && (
-                <button className="btn-secondary-sm btn-purple-sm" onClick={() => openHueLampModal(room.id, floorId)}>
+                <button className="btn-secondary-sm btn-purple-sm" type="button" onClick={(e) => { e.stopPropagation(); openHueLampModal(room.id, floorId); }}>
                   <Lightbulb size={13} /> Add Hue Lamp
                 </button>
               )}

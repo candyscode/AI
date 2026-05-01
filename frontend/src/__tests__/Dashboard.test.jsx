@@ -124,6 +124,13 @@ describe('Dashboard — room card', () => {
     renderDashboard({ rooms: [emptyRoom] });
     expect(screen.getByText(/No functions available/i)).toBeInTheDocument();
   });
+
+  it('does not crash when a legacy room is missing scenes and functions arrays', () => {
+    const legacyRoom = { id: 'legacy', name: 'Garage', sceneGroupAddress: '' };
+    renderDashboard({ rooms: [legacyRoom] });
+    expect(screen.getByText('Garage')).toBeInTheDocument();
+    expect(screen.getByText(/No functions available/i)).toBeInTheDocument();
+  });
 });
 
 describe('Dashboard — globals widget', () => {

@@ -4,6 +4,21 @@ export function buildApartmentPath(slug, section = 'dashboard') {
   return `/${slug}/${section}`;
 }
 
+function normalizeRoom(room) {
+  return {
+    ...room,
+    scenes: Array.isArray(room?.scenes) ? room.scenes : [],
+    functions: Array.isArray(room?.functions) ? room.functions : [],
+  };
+}
+
+function normalizeFloor(floor) {
+  return {
+    ...floor,
+    rooms: Array.isArray(floor?.rooms) ? floor.rooms.map(normalizeRoom) : [],
+  };
+}
+
 export function parseAppPath(pathname, apartments = []) {
   const segments = String(pathname || '/')
     .split('/')
@@ -44,11 +59,11 @@ export function migrateLegacyConfig(config) {
         knxPort: config?.knxPort || 3671,
         hue: config?.hue || { bridgeIp: '', apiKey: '' },
         floors: Array.isArray(config?.floors) && config.floors.length > 0
-          ? config.floors
+          ? config.floors.map(normalizeFloor)
           : [{
             id: 'area_default',
             name: 'Ground Floor',
-            rooms: Array.isArray(config?.rooms) ? config.rooms : [],
+            rooms: Array.isArray(config?.rooms) ? config.rooms.map(normalizeRoom) : [],
           }],
         alarms: Array.isArray(config?.globals)
           ? config.globals.filter((item) => item?.type === 'alarm')
@@ -95,7 +110,9 @@ export function ensureUniqueSlug(baseSlug, apartments, currentApartmentId = null
 export function buildApartmentView(config, apartmentSlug) {
   const normalized = migrateLegacyConfig(config);
   const apartment = normalized.apartments.find((entry) => entry.slug === apartmentSlug) || normalized.apartments[0] || null;
-  const sharedAreas = Array.isArray(normalized.building?.sharedAreas) ? normalized.building.sharedAreas : [];
+  const sharedAreas = Array.isArray(normalized.building?.sharedAreas)
+    ? normalized.building.sharedAreas.map(normalizeFloor)
+    : [];
 
   if (!apartment) {
     return {
@@ -108,7 +125,7 @@ export function buildApartmentView(config, apartmentSlug) {
   }
 
   const mergedFloors = [
-    ...(Array.isArray(apartment.floors) ? apartment.floors : []).map((floor) => ({ ...floor, isShared: false })),
+    ...(Array.isArray(apartment.floors) ? apartment.floors : []).map((floor) => ({ ...normalizeFloor(floor), isShared: false })),
     ...sharedAreas.map((area) => ({ ...area, isShared: true })),
   ];
   const areaOrder = Array.isArray(apartment.areaOrder) ? apartment.areaOrder : [];

@@ -112,6 +112,43 @@ describe('appModel migration and view building', () => {
       dayValue: 1,
     });
   });
+
+  it('normalizes legacy rooms without scenes/functions arrays in the apartment view', () => {
+    const config = {
+      version: 2,
+      building: {
+        sharedAccessApartmentId: 'apartment_1',
+        sharedInfos: [],
+        sharedAreas: [{ id: 'shared-garden', name: 'Garden', rooms: [{ id: 'shared-room', name: 'Shared Room' }] }],
+        sharedImportedGroupAddresses: [],
+        sharedImportedGroupAddressesFileName: '',
+      },
+      apartments: [
+        {
+          id: 'apartment_1',
+          name: 'Wohnung Ost',
+          slug: 'wohnung-ost',
+          knxIp: '192.168.1.10',
+          knxPort: 3671,
+          hue: { bridgeIp: '', apiKey: '' },
+          floors: [{ id: 'private-living', name: 'Living', rooms: [{ id: 'room-1', name: 'Legacy Room' }] }],
+          areaOrder: ['private-living', 'shared-garden'],
+          alarms: [],
+          importedGroupAddresses: [],
+          importedGroupAddressesFileName: '',
+        },
+      ],
+    };
+
+    const view = buildApartmentView(config, 'wohnung-ost');
+    const privateRoom = view.apartmentConfig.floors.find((floor) => floor.id === 'private-living').rooms[0];
+    const sharedRoom = view.apartmentConfig.floors.find((floor) => floor.id === 'shared-garden').rooms[0];
+
+    expect(privateRoom.scenes).toEqual([]);
+    expect(privateRoom.functions).toEqual([]);
+    expect(sharedRoom.scenes).toEqual([]);
+    expect(sharedRoom.functions).toEqual([]);
+  });
 });
 
 describe('appModel apartment drafts and slugs', () => {
