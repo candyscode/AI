@@ -801,11 +801,6 @@ app.post('/api/action', async (req, res) => {
     res.json({ success: true, message: 'Sent to bus' });
   } catch (error) {
     console.error('Failed to execute action:', error.message);
-    io.emit('knx_error', {
-      apartmentId: actionContext.apartmentId,
-      scope,
-      msg: `Action failed on bus: ${error.message}`,
-    });
     res.status(500).json({ success: false, error: error.message });
   }
 });

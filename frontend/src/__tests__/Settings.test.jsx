@@ -36,12 +36,15 @@ vi.mock('../components/FloorTabs', () => ({
 }));
 
 vi.mock('../components/CollapsibleRoomCard', () => ({
-  default: ({ room, floorId, handleDeleteRoom, handleAddScene, handleUpdateScene, persistRoomChanges }) => (
+  default: ({ room, floorId, handleDeleteRoom, handleAddScene, handleAddFunction, handleUpdateScene, persistRoomChanges }) => (
     <div data-testid={`room-${room.id}`}>
       <span>{room.name}</span>
       <button onClick={() => handleDeleteRoom?.(floorId, room.id)}>Delete Room</button>
       <button onClick={() => handleAddScene?.(floorId, room.id, 'shade')}>
         Add Shade Scene
+      </button>
+      <button onClick={() => handleAddFunction?.(floorId, room.id)}>
+        Add Function
       </button>
       {room.scenes?.[0] && (
         <button
@@ -275,6 +278,56 @@ describe('Settings — merged multi-apartment area view', () => {
         ]),
       }));
     });
+  });
+
+  it('adds a function even when a legacy room has no functions array yet', async () => {
+    const user = userEvent.setup();
+    renderSettings({
+      ...FULL_CONFIG,
+      apartments: [
+        {
+          ...FULL_CONFIG.apartments[0],
+          floors: [
+            {
+              id: 'east-living',
+              name: 'Living',
+              rooms: [{ id: 'room-1', name: 'Living Room', scenes: [], sceneGroupAddress: '' }],
+            },
+          ],
+        },
+        FULL_CONFIG.apartments[1],
+      ],
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Add Function' }));
+
+    await waitFor(() => {
+      expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+        apartments: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'apartment_1',
+            floors: expect.arrayContaining([
+              expect.objectContaining({
+                id: 'east-living',
+                rooms: expect.arrayContaining([
+                  expect.objectContaining({
+                    id: 'room-1',
+                    functions: expect.arrayContaining([
+                      expect.objectContaining({
+                        type: 'switch',
+                        groupAddress: '',
+                      }),
+                    ]),
+                  }),
+                ]),
+              }),
+            ]),
+          }),
+        ]),
+      }));
+    });
+
+    expect(fetchConfig).not.toHaveBeenCalled();
   });
 });
 

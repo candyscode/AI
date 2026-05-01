@@ -60,7 +60,8 @@ const BlindsCard = ({ func, istPosition, isMoving, onAction }) => {
 function RoomCard({ room, deviceStates, hueStates, handleAction, handleHueAction, handleSceneAction }) {
   const roomScenes = room.scenes || [];
   const hasScenes = roomScenes.length > 0;
-  const hasFunctions = room.functions && room.functions.length > 0;
+  const roomFunctions = room.functions || [];
+  const hasFunctions = roomFunctions.length > 0;
   const roomTemperatureValue = room.roomTemperatureGroupAddress ? deviceStates[room.roomTemperatureGroupAddress] : undefined;
   const hasRoomTemperature = room.roomTemperatureGroupAddress && roomTemperatureValue !== undefined && roomTemperatureValue !== null && roomTemperatureValue !== '';
   const parsedRoomTemperature = hasRoomTemperature ? Number(roomTemperatureValue) : null;
@@ -115,7 +116,7 @@ function RoomCard({ room, deviceStates, hueStates, handleAction, handleHueAction
         <div className="scene-category" style={{ marginTop: hasScenes ? '0.4rem' : '0' }}>
           <h4 className="scene-category-title">Functions</h4>
           <div className="functions-grid">
-            {room.functions.map(func => {
+            {roomFunctions.map(func => {
               if (func.type === 'percentage') {
                 return (
                   <BlindsCard key={func.id} func={func}
