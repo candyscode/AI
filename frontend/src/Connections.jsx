@@ -69,9 +69,6 @@ export default function Connections({
   const [hueBridgeIp, setHueBridgeIp] = useState(config.hue?.bridgeIp || '');
   const [hueError, setHueError] = useState('');
   const [sharedAccessApartmentId, setSharedAccessApartmentId] = useState(config.sharedAccessApartmentId || apartment.id);
-  const [sharedUsesApartmentImportedGroupAddresses, setSharedUsesApartmentImportedGroupAddresses] = useState(
-    config.sharedUsesApartmentImportedGroupAddresses === true
-  );
   const [newApartmentName, setNewApartmentName] = useState('');
   const [configPasswordDraft, setConfigPasswordDraft] = useState('');
   const [configPasswordConfirmDraft, setConfigPasswordConfirmDraft] = useState('');
@@ -91,22 +88,17 @@ export default function Connections({
     open: false,
     title: 'ETS XML import',
     mode: 'any',
+    dptFilter: null,
     allowUpload: false,
     helperText: '',
     scope: 'apartment',
   });
 
-  const [apartmentGroupAddressBook, setApartmentGroupAddressBook] = useState(
+  const [houseGroupAddressBook, setHouseGroupAddressBook] = useState(
     Array.isArray(config.importedGroupAddresses) ? config.importedGroupAddresses : []
   );
-  const [apartmentGroupAddressFileName, setApartmentGroupAddressFileName] = useState(
+  const [houseGroupAddressFileName, setHouseGroupAddressFileName] = useState(
     config.importedGroupAddressesFileName || ''
-  );
-  const [sharedGroupAddressBook, setSharedGroupAddressBook] = useState(
-    Array.isArray(config.sharedImportedGroupAddresses) ? config.sharedImportedGroupAddresses : []
-  );
-  const [sharedGroupAddressFileName, setSharedGroupAddressFileName] = useState(
-    config.sharedImportedGroupAddressesFileName || ''
   );
   
   const [sunTriggerGa, setSunTriggerGa] = useState(config.sunTrigger?.groupAddress || '');
@@ -121,11 +113,8 @@ export default function Connections({
     setPort(config.knxPort || 3671);
     setHueBridgeIp(config.hue?.bridgeIp || '');
     setSharedAccessApartmentId(config.sharedAccessApartmentId || apartment.id);
-    setSharedUsesApartmentImportedGroupAddresses(config.sharedUsesApartmentImportedGroupAddresses === true);
-    setApartmentGroupAddressBook(Array.isArray(config.importedGroupAddresses) ? config.importedGroupAddresses : []);
-    setApartmentGroupAddressFileName(config.importedGroupAddressesFileName || '');
-    setSharedGroupAddressBook(Array.isArray(config.sharedImportedGroupAddresses) ? config.sharedImportedGroupAddresses : []);
-    setSharedGroupAddressFileName(config.sharedImportedGroupAddressesFileName || '');
+    setHouseGroupAddressBook(Array.isArray(config.importedGroupAddresses) ? config.importedGroupAddresses : []);
+    setHouseGroupAddressFileName(config.importedGroupAddressesFileName || '');
     setConfigPasswordDraft('');
     setConfigPasswordConfirmDraft('');
     setSunTriggerGa(config.sunTrigger?.groupAddress || '');
@@ -149,34 +138,34 @@ export default function Connections({
     sunTriggerBus !== (config.sunTrigger?.bus || 'apartment') ||
     sunTriggerDayValue !== (config.sunTrigger?.dayValue ?? 1)
   );
-  const sharedSettingsDirty = (
-    sharedAccessApartmentId !== (config.sharedAccessApartmentId || apartment.id) ||
-    sharedUsesApartmentImportedGroupAddresses !== (config.sharedUsesApartmentImportedGroupAddresses === true)
-  );
+  const sharedSettingsDirty = sharedAccessApartmentId !== (config.sharedAccessApartmentId || apartment.id);
 
   const buildNextConfig = (overrides = {}) => ({
     ...fullConfig,
     building: {
       ...fullConfig.building,
       sharedAccessApartmentId: overrides.sharedAccessApartmentId ?? sharedAccessApartmentId,
-      sharedUsesApartmentImportedGroupAddresses: overrides.sharedUsesApartmentImportedGroupAddresses
-        ?? sharedUsesApartmentImportedGroupAddresses,
-      sharedImportedGroupAddresses: overrides.sharedGroupAddressBook ?? sharedGroupAddressBook,
-      sharedImportedGroupAddressesFileName: overrides.sharedGroupAddressFileName ?? sharedGroupAddressFileName,
+      importedGroupAddresses: overrides.houseGroupAddressBook ?? houseGroupAddressBook,
+      importedGroupAddressesFileName: overrides.houseGroupAddressFileName ?? houseGroupAddressFileName,
+      sharedUsesApartmentImportedGroupAddresses: false,
+      sharedImportedGroupAddresses: overrides.houseGroupAddressBook ?? houseGroupAddressBook,
+      sharedImportedGroupAddressesFileName: overrides.houseGroupAddressFileName ?? houseGroupAddressFileName,
     },
-    apartments: fullConfig.apartments.map((entry) => entry.id !== apartment.id ? entry : ({
+    apartments: fullConfig.apartments.map((entry) => ({
       ...entry,
-      name: overrides.apartmentName ?? apartmentName,
-      slug: overrides.apartmentSlug ?? apartmentSlug,
-      knxIp: overrides.ip ?? ip,
-      knxPort: overrides.port ?? Number(port),
-      sunTrigger: {
-        groupAddress: overrides.sunTriggerGa ?? sunTriggerGa,
-        bus: overrides.sunTriggerBus ?? sunTriggerBus,
-        dayValue: overrides.sunTriggerDayValue ?? sunTriggerDayValue,
-      },
-      importedGroupAddresses: overrides.apartmentGroupAddressBook ?? apartmentGroupAddressBook,
-      importedGroupAddressesFileName: overrides.apartmentGroupAddressFileName ?? apartmentGroupAddressFileName,
+      ...(entry.id === apartment.id ? {
+        name: overrides.apartmentName ?? apartmentName,
+        slug: overrides.apartmentSlug ?? apartmentSlug,
+        knxIp: overrides.ip ?? ip,
+        knxPort: overrides.port ?? Number(port),
+        sunTrigger: {
+          groupAddress: overrides.sunTriggerGa ?? sunTriggerGa,
+          bus: overrides.sunTriggerBus ?? sunTriggerBus,
+          dayValue: overrides.sunTriggerDayValue ?? sunTriggerDayValue,
+        },
+      } : {}),
+      importedGroupAddresses: [],
+      importedGroupAddressesFileName: '',
     })),
   });
 
@@ -221,21 +210,10 @@ export default function Connections({
 
   const persistSharedSettings = async (overrides = {}) => {
     const nextSharedAccessApartmentId = overrides.sharedAccessApartmentId ?? sharedAccessApartmentId;
-    const nextSharedUsesApartmentImportedGroupAddresses = overrides.sharedUsesApartmentImportedGroupAddresses
-      ?? sharedUsesApartmentImportedGroupAddresses;
-    const nextSharedGroupAddressBook = nextSharedUsesApartmentImportedGroupAddresses
-      ? []
-      : (overrides.sharedGroupAddressBook ?? sharedGroupAddressBook);
-    const nextSharedGroupAddressFileName = nextSharedUsesApartmentImportedGroupAddresses
-      ? ''
-      : (overrides.sharedGroupAddressFileName ?? sharedGroupAddressFileName);
 
     if (
       !sharedSettingsDirty &&
-      nextSharedAccessApartmentId === sharedAccessApartmentId &&
-      nextSharedUsesApartmentImportedGroupAddresses === sharedUsesApartmentImportedGroupAddresses &&
-      nextSharedGroupAddressBook === sharedGroupAddressBook &&
-      nextSharedGroupAddressFileName === sharedGroupAddressFileName
+      nextSharedAccessApartmentId === sharedAccessApartmentId
     ) {
       return;
     }
@@ -243,9 +221,6 @@ export default function Connections({
     try {
       await persistConfig(buildNextConfig({
         sharedAccessApartmentId: nextSharedAccessApartmentId,
-        sharedUsesApartmentImportedGroupAddresses: nextSharedUsesApartmentImportedGroupAddresses,
-        sharedGroupAddressBook: nextSharedGroupAddressBook,
-        sharedGroupAddressFileName: nextSharedGroupAddressFileName,
       }));
     } catch {
       addToast('Failed to save main line settings', 'error');
@@ -308,21 +283,12 @@ export default function Connections({
 
   const importGroupAddresses = async (addresses, fileName) => {
     try {
-      if (groupAddressModal.scope === 'shared') {
-        setSharedGroupAddressBook(addresses);
-        setSharedGroupAddressFileName(fileName);
-        await persistConfig(buildNextConfig({
-          sharedGroupAddressBook: addresses,
-          sharedGroupAddressFileName: fileName,
-        }));
-      } else {
-        setApartmentGroupAddressBook(addresses);
-        setApartmentGroupAddressFileName(fileName);
-        await persistConfig(buildNextConfig({
-          apartmentGroupAddressBook: addresses,
-          apartmentGroupAddressFileName: fileName,
-        }));
-      }
+      setHouseGroupAddressBook(addresses);
+      setHouseGroupAddressFileName(fileName);
+      await persistConfig(buildNextConfig({
+        houseGroupAddressBook: addresses,
+        houseGroupAddressFileName: fileName,
+      }));
       addToast(`Imported ${addresses.length} group addresses`, 'success');
     } catch {
       addToast('Failed to persist imported group addresses', 'error');
@@ -376,15 +342,9 @@ export default function Connections({
 
   const clearGroupAddresses = async () => {
     try {
-      if (groupAddressModal.scope === 'shared') {
-        setSharedGroupAddressBook([]);
-        setSharedGroupAddressFileName('');
-        await persistConfig(buildNextConfig({ sharedGroupAddressBook: [], sharedGroupAddressFileName: '' }));
-      } else {
-        setApartmentGroupAddressBook([]);
-        setApartmentGroupAddressFileName('');
-        await persistConfig(buildNextConfig({ apartmentGroupAddressBook: [], apartmentGroupAddressFileName: '' }));
-      }
+      setHouseGroupAddressBook([]);
+      setHouseGroupAddressFileName('');
+      await persistConfig(buildNextConfig({ houseGroupAddressBook: [], houseGroupAddressFileName: '' }));
       addToast('Imported group addresses cleared', 'success');
     } catch {
       addToast('Failed to clear imported group addresses', 'error');
@@ -416,42 +376,6 @@ export default function Connections({
         cancelLabel: 'Cancel',
         danger: false,
       };
-    });
-  };
-
-  const handleSharedApartmentXmlToggle = async (nextValue) => {
-    if (!nextValue) {
-      setSharedUsesApartmentImportedGroupAddresses(false);
-      await persistSharedSettings({ sharedUsesApartmentImportedGroupAddresses: false });
-      return;
-    }
-
-    if (sharedGroupAddressBook.length === 0 && !sharedGroupAddressFileName) {
-      setSharedUsesApartmentImportedGroupAddresses(true);
-      await persistSharedSettings({
-        sharedUsesApartmentImportedGroupAddresses: true,
-        sharedGroupAddressBook: [],
-        sharedGroupAddressFileName: '',
-      });
-      return;
-    }
-
-    const confirmed = await requestConfirm({
-      title: 'Use Main Line Apartment ETS XML',
-      message: 'Switching this on removes the dedicated main line ETS XML. Continue?',
-      confirmLabel: 'Use Main Line XML',
-      danger: true,
-    });
-
-    if (!confirmed) return;
-
-    setSharedUsesApartmentImportedGroupAddresses(true);
-    setSharedGroupAddressBook([]);
-    setSharedGroupAddressFileName('');
-    await persistSharedSettings({
-      sharedUsesApartmentImportedGroupAddresses: true,
-      sharedGroupAddressBook: [],
-      sharedGroupAddressFileName: '',
     });
   };
 
@@ -534,31 +458,12 @@ export default function Connections({
     }
   };
 
-  const apartmentSupportedCount = apartmentGroupAddressBook.filter((entry) => entry.supported).length;
-  const sharedSupportedCount = sharedGroupAddressBook.filter((entry) => entry.supported).length;
-  const modalAddressBook = groupAddressModal.scope === 'shared' ? sharedGroupAddressBook : apartmentGroupAddressBook;
-  const modalFileName = groupAddressModal.scope === 'shared' ? sharedGroupAddressFileName : apartmentGroupAddressFileName;
-  const sharedAccessApartment = fullConfig.apartments.find((entry) => entry.id === sharedAccessApartmentId) || apartment;
+  const houseImportedCount = houseGroupAddressBook.length;
+  const modalAddressBook = houseGroupAddressBook;
+  const modalFileName = houseGroupAddressFileName;
   const sharedAccessApartmentName = fullConfig.apartments.find((entry) => entry.id === sharedAccessApartmentId)?.name || apartment.name;
-  const isCurrentApartmentSharedAccessSource = apartment.id === sharedAccessApartmentId;
-  const sharedScopeContextCopy = isCurrentApartmentSharedAccessSource
-    ? `Main Line access uses ${sharedAccessApartmentName}.`
-    : `Main Line access uses ${sharedAccessApartmentName}, not this apartment.`;
-  const sharedXmlToggleCopy = isCurrentApartmentSharedAccessSource
-    ? 'Use this apartment XML for Main Line browsing.'
-    : `Use ${sharedAccessApartmentName}'s apartment XML for Main Line browsing.`;
-  const sharedXmlActiveCopy = isCurrentApartmentSharedAccessSource
-    ? `Using ${sharedAccessApartmentName}'s apartment XML for Main Line browsing.`
-    : `Using ${sharedAccessApartmentName}'s apartment XML for Main Line browsing.`;
-  const sharedXmlEditable = isCurrentApartmentSharedAccessSource;
-  const sunTriggerAddressBook = sunTriggerBus === 'main'
-    ? (
-      sharedUsesApartmentImportedGroupAddresses
-        ? (Array.isArray(sharedAccessApartment?.importedGroupAddresses) ? sharedAccessApartment.importedGroupAddresses : [])
-        : sharedGroupAddressBook
-    )
-    : apartmentGroupAddressBook;
-  const sunTriggerMatchedAddressName = getImportedGroupAddressName(sunTriggerAddressBook, sunTriggerGa);
+  const sharedScopeContextCopy = `The app reaches the Main Line through ${sharedAccessApartmentName}.`;
+  const sunTriggerMatchedAddressName = getImportedGroupAddressName(houseGroupAddressBook, sunTriggerGa);
 
   return (
     <div className="glass-panel settings-panel connections-page">
@@ -567,7 +472,7 @@ export default function Connections({
           <div className="page-eyebrow">Setup</div>
           <h2 className="page-title">Building Setup</h2>
           <p className="page-copy">
-            Everything for the current apartment, the Main Line setup and apartment management in one place.
+            Apartment-specific connections, house-wide KNX data, backups and apartment management in one place.
           </p>
         </div>
         <div className="page-hero-statuses">
@@ -579,17 +484,17 @@ export default function Connections({
       <div className="connections-group">
         <div className="connections-group-header">
           <div>
-            <div className="connections-group-label">Current Apartment</div>
+            <div className="connections-group-label">This Apartment</div>
             <h3 className="connections-group-title">{apartment.name}</h3>
-            <p className="connections-group-copy">Everything that belongs only to this apartment stays together here.</p>
+            <p className="connections-group-copy">Settings here affect only this apartment: its name, URL, KNX gateway and Hue bridge.</p>
           </div>
         </div>
 
         <div className="connections-card-grid">
           <SetupCard
             icon={<HomeIcon size={20} />}
-            title="Identity & KNX Gateway"
-            description="Name, bookmarkable URL and the KNX gateway for this apartment."
+            title="Apartment Name, URL & KNX Gateway"
+            description="Set the apartment name, bookmarkable URL, and the KNX IP gateway used for this apartment."
             tone="knx-icon"
           >
             <div className="connections-grid">
@@ -617,43 +522,9 @@ export default function Connections({
           </SetupCard>
 
           <SetupCard
-            icon={<FileText size={20} />}
-            title="Apartment ETS XML"
-            description="Import the ETS XML for the apartment's own KNX line."
-            tone="ets-icon"
-          >
-            <div className="connections-card-actions">
-              <button
-                className="btn-secondary"
-                onClick={() => setGroupAddressModal({
-                  open: true,
-                  title: 'Apartment ETS XML import',
-                  allowUpload: true,
-                  mode: 'any',
-                  helperText: 'Upload the ETS XML for this apartment.',
-                  scope: 'apartment',
-                })}
-              >
-                <FileText size={15} /> Manage Apartment ETS XML
-              </button>
-
-              {apartmentGroupAddressFileName && apartmentGroupAddressBook.length > 0 && (
-                <div className="ets-status-badge">
-                  <div className="ets-status-dot" />
-                  <span>
-                    <strong>{apartmentGroupAddressFileName}</strong>
-                    {' · '}
-                    <span style={{ color: 'var(--text-secondary)' }}>{apartmentSupportedCount} supported addresses</span>
-                  </span>
-                </div>
-              )}
-            </div>
-          </SetupCard>
-
-          <SetupCard
             icon={<Lightbulb size={20} />}
             title="Philips Hue"
-            description="Connect only the Hue Bridge that belongs to this apartment."
+            description="Connect the Hue Bridge that belongs only to this apartment."
             tone="hue-icon"
           >
             {hueStatus.paired ? (
@@ -687,10 +558,10 @@ export default function Connections({
       <div className="connections-group">
         <div className="connections-group-header">
           <div>
-            <div className="connections-group-label">Main Line Setup</div>
-            <h3 className="connections-group-title">Main Line & Central Function Configuration</h3>
+            <div className="connections-group-label">Whole House</div>
+            <h3 className="connections-group-title">Shared KNX Data & Main Line</h3>
             <p className="connections-group-copy">
-              Building-wide setup for Main Line group addresses, central information and automation triggers for spaces like garden or garage.
+              Everything used across apartments lives here: how the app reaches the Main Line, the ETS export for the whole house, and the day/night trigger for sunrise and sunset routines.
             </p>
           </div>
         </div>
@@ -699,12 +570,12 @@ export default function Connections({
           <SetupCard
             icon={<Building2 size={20} />}
             title="Main Line Access"
-            description="Choose which apartment gateway can listen to KNX telegrams from the Main Line and central KNX functions."
+            description="Choose which apartment gateway can receive KNX telegrams from the Main Line."
             tone="knx-icon"
           >
             <div className="connections-grid">
               <div className="settings-field">
-                <label className="settings-field-label">Main Line Access via Apartment</label>
+                <label className="settings-field-label">Use Gateway From Apartment</label>
                 <select
                   className="form-select"
                   value={sharedAccessApartmentId}
@@ -733,112 +604,51 @@ export default function Connections({
 
           <SetupCard
             icon={<FileText size={20} />}
-            title="Main Line ETS XML"
-            description="ETS XML for Main Line and central KNX group addresses."
+            title="House ETS XML"
+            description="Upload one ETS export for the entire house, including all apartments and the Main Line."
             tone="ets-icon"
-            className={!sharedXmlEditable ? 'connections-card--locked' : ''}
           >
             <p className="connections-card-copy" style={{ marginBottom: '1rem' }}>
-              {sharedScopeContextCopy}
+              This XML is used for XML match hints and all Browse dialogs across the app.
             </p>
-            {sharedXmlEditable ? (
-              <>
-                <div className="settings-field" style={{ marginBottom: '1rem' }}>
-                  <label
-                    className="settings-toggle-row"
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', cursor: 'pointer' }}
-                  >
-                    <div>
-                      <div className="settings-field-label" style={{ marginBottom: '0.2rem' }}>Use Main Line apartment's ETS XML</div>
-                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-                        {sharedXmlToggleCopy}
-                      </div>
-                    </div>
-                    <span className="settings-toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={sharedUsesApartmentImportedGroupAddresses}
-                        onChange={(event) => handleSharedApartmentXmlToggle(event.target.checked)}
-                        aria-label="Use Main Line apartment's ETS XML"
-                      />
-                      <span className="settings-toggle-slider" />
-                    </span>
-                  </label>
-                </div>
-                <div className="connections-card-actions">
-                  {sharedUsesApartmentImportedGroupAddresses ? (
-                    <div className="ets-status-badge">
-                      <div className="ets-status-dot" />
-                      <span>
-                        {sharedXmlActiveCopy}
-                      </span>
-                    </div>
-                  ) : (
-                    <button
-                      className="btn-secondary"
-                      onClick={() => setGroupAddressModal({
-                        open: true,
-                        title: 'Main Line ETS XML import',
-                        allowUpload: true,
-                        mode: 'any',
-                        helperText: `Upload the ETS XML for the Main Line and central functions. Main Line access currently uses ${sharedAccessApartmentName}.`,
-                        scope: 'shared',
-                      })}
-                    >
-                      <FileText size={15} /> Manage Main Line ETS XML
-                    </button>
-                  )}
+            <div className="connections-card-actions">
+              <button
+                className="btn-secondary"
+                onClick={() => setGroupAddressModal({
+                  open: true,
+                  title: 'House ETS XML import',
+                  allowUpload: true,
+                  mode: 'any',
+                  dptFilter: null,
+                  helperText: 'Upload one ETS XML export that contains all KNX group addresses for this house.',
+                  scope: 'building',
+                })}
+              >
+                <FileText size={15} /> Manage House ETS XML
+              </button>
 
-                  {!sharedUsesApartmentImportedGroupAddresses && sharedGroupAddressFileName && sharedGroupAddressBook.length > 0 && (
-                    <div className="ets-status-badge">
-                      <div className="ets-status-dot" />
-                      <span>
-                        <strong>{sharedGroupAddressFileName}</strong>
-                        {' · '}
-                        <span style={{ color: 'var(--text-secondary)' }}>{sharedSupportedCount} supported addresses</span>
-                      </span>
-                    </div>
-                  )}
+              {houseGroupAddressFileName && houseGroupAddressBook.length > 0 && (
+                <div className="ets-status-badge">
+                  <div className="ets-status-dot" />
+                  <span>
+                    <strong>{houseGroupAddressFileName}</strong>
+                    {' · '}
+                    <span style={{ color: 'var(--text-secondary)' }}>{houseImportedCount} imported addresses</span>
+                  </span>
                 </div>
-              </>
-            ) : (
-              <div className="connections-stack">
-                <div className="connections-readonly-note">
-                  Edit this in <strong>{sharedAccessApartmentName}</strong> only.
-                </div>
-                {sharedUsesApartmentImportedGroupAddresses ? (
-                  <div className="ets-status-badge">
-                    <div className="ets-status-dot" />
-                    <span>{sharedXmlActiveCopy}</span>
-                  </div>
-                ) : sharedGroupAddressFileName && sharedGroupAddressBook.length > 0 ? (
-                  <div className="ets-status-badge">
-                    <div className="ets-status-dot" />
-                    <span>
-                      <strong>{sharedGroupAddressFileName}</strong>
-                      {' · '}
-                      <span style={{ color: 'var(--text-secondary)' }}>{sharedSupportedCount} supported addresses</span>
-                    </span>
-                  </div>
-                ) : (
-                  <div className="ets-status-badge">
-                    <div className="ets-status-dot" />
-                    <span>No dedicated Main Line ETS XML configured.</span>
-                  </div>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </SetupCard>
 
           <SetupCard
             icon={<Sun size={20} />}
             title="Sunrise / Sunset Trigger"
-            description="Listen to a Day/Night group address to run routines at sunrise or sunset."
+            description="Choose the KNX day/night status address that should trigger sunrise and sunset routines."
             tone="knx-icon"
           >
             <div className="connections-grid">
               <div className="settings-field">
-                <label className="settings-field-label">Line / Bus</label>
+                <label className="settings-field-label">Listen On</label>
                 <select
                   className="form-input"
                   value={sunTriggerBus}
@@ -848,8 +658,8 @@ export default function Connections({
                     void commitApartmentSettings({ sunTriggerBus: nextBus });
                   }}
                 >
-                  <option value="apartment">Apartment XML</option>
-                  <option value="main">Main Line XML</option>
+                  <option value="apartment">Apartment Line</option>
+                  <option value="main">Main Line</option>
                 </select>
               </div>
               <div className="settings-field">
@@ -870,6 +680,7 @@ export default function Connections({
                       title: 'Pick Sun Trigger GA',
                       allowUpload: false,
                       mode: 'any',
+                      dptFilter: '1.',
                       helperText: 'Select the Day/Night status address',
                       scope: sunTriggerBus === 'main' ? 'shared' : 'apartment',
                       targetField: 'sunTriggerGa'
@@ -907,9 +718,9 @@ export default function Connections({
       <div className="connections-group">
         <div className="connections-group-header">
           <div>
-            <div className="connections-group-label">Configuration Management</div>
-            <h3 className="connections-group-title">Access & Backup</h3>
-            <p className="connections-group-copy">Protect configuration changes and manage full-house backups in one place.</p>
+            <div className="connections-group-label">Protection & Backup</div>
+            <h3 className="connections-group-title">Configuration Protection & Backup</h3>
+            <p className="connections-group-copy">Prevent accidental changes and export or restore the complete house configuration.</p>
           </div>
         </div>
 
@@ -917,7 +728,7 @@ export default function Connections({
           <SetupCard
             icon={<SettingsIcon size={20} />}
             title="Configuration Password"
-            description="A single password unlocks configuration changes for the whole house."
+            description="One password protects Rooms, Setup and Automation for the whole house."
             tone="shared-icon"
           >
             <div className="connections-password-card">
@@ -969,7 +780,7 @@ export default function Connections({
           <SetupCard
             icon={<FileText size={20} />}
             title="Full Config Backup"
-            description="Export the complete app state or import it into another instance, including apartments, slugs, KNX, Hue, areas, rooms, scenes and ETS settings."
+            description="Export the complete house configuration or restore it on another app instance."
             tone="ets-icon"
           >
             <input
@@ -998,8 +809,8 @@ export default function Connections({
         <div className="connections-group-header">
           <div>
             <div className="connections-group-label">Apartments</div>
-            <h3 className="connections-group-title">Manage Apartments</h3>
-            <p className="connections-group-copy">Switch quickly or add another apartment to the same building.</p>
+            <h3 className="connections-group-title">Apartment List</h3>
+            <p className="connections-group-copy">Jump to another apartment or add a new one to the same building.</p>
           </div>
         </div>
 
@@ -1007,7 +818,7 @@ export default function Connections({
           <SetupCard
             icon={<Building2 size={20} />}
             title="Existing Apartments"
-            description="These apartments are currently configured in the app."
+            description="All apartments that are currently configured in this house."
             tone="knx-icon"
           >
             <div className="connections-apartment-list">
@@ -1053,7 +864,7 @@ export default function Connections({
         title={groupAddressModal.title}
         addresses={modalAddressBook}
         importedFileName={modalFileName}
-        onClose={() => setGroupAddressModal({ open: false, title: '', mode: 'any', allowUpload: false, helperText: '', scope: 'apartment' })}
+        onClose={() => setGroupAddressModal({ open: false, title: '', mode: 'any', dptFilter: null, allowUpload: false, helperText: '', scope: 'apartment' })}
         onSelect={(ga) => {
           if (groupAddressModal.targetField === 'sunTriggerGa') {
             setSunTriggerGa(ga.address);
@@ -1064,8 +875,10 @@ export default function Connections({
         onImport={importGroupAddresses}
         onClear={clearGroupAddresses}
         mode={groupAddressModal.mode}
+        dptFilter={groupAddressModal.dptFilter}
         allowUpload={groupAddressModal.allowUpload}
         helperText={groupAddressModal.helperText}
+        preferredTopLevelRangeName={apartment.name}
       />
 
       <ConfirmDialog

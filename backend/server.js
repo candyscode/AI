@@ -429,6 +429,17 @@ function applyConfigPatch(payload) {
       config.building.sharedAreas = Array.isArray(areas) ? areas.map(normalizeArea) : [];
     }
 
+    if (payload.importedGroupAddresses !== undefined) {
+      config.building.importedGroupAddresses = normalizeImportedGroupAddresses(payload.importedGroupAddresses);
+    }
+
+    if (payload.importedGroupAddressesFileName !== undefined) {
+      config.building.importedGroupAddressesFileName =
+        typeof payload.importedGroupAddressesFileName === 'string'
+          ? payload.importedGroupAddressesFileName
+          : '';
+    }
+
     if (payload.sharedImportedGroupAddresses !== undefined || payload.importedGroupAddresses !== undefined) {
       config.building.sharedImportedGroupAddresses = normalizeImportedGroupAddresses(
         payload.sharedImportedGroupAddresses !== undefined
@@ -532,10 +543,15 @@ function applyConfigPatch(payload) {
 
   if (payload.importedGroupAddresses !== undefined) {
     apartment.importedGroupAddresses = normalizeImportedGroupAddresses(payload.importedGroupAddresses);
+    config.building.importedGroupAddresses = normalizeImportedGroupAddresses(payload.importedGroupAddresses);
   }
 
   if (payload.importedGroupAddressesFileName !== undefined) {
     apartment.importedGroupAddressesFileName =
+      typeof payload.importedGroupAddressesFileName === 'string'
+        ? payload.importedGroupAddressesFileName
+        : '';
+    config.building.importedGroupAddressesFileName =
       typeof payload.importedGroupAddressesFileName === 'string'
         ? payload.importedGroupAddressesFileName
         : '';

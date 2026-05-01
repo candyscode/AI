@@ -184,11 +184,8 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     helperText: '',
     scope: 'apartment'
   });
-  const [apartmentGroupAddressBook, setApartmentGroupAddressBook] = useState([]);
-  const [apartmentGroupAddressFileName, setApartmentGroupAddressFileName] = useState('');
-  const [sharedGroupAddressBook, setSharedGroupAddressBook] = useState([]);
-  const [sharedGroupAddressFileName, setSharedGroupAddressFileName] = useState('');
-  const sharedUsesApartmentImportedGroupAddresses = config.sharedUsesApartmentImportedGroupAddresses === true;
+  const [houseGroupAddressBook, setHouseGroupAddressBook] = useState([]);
+  const [houseGroupAddressFileName, setHouseGroupAddressFileName] = useState('');
   const [addAreaModalOpen, setAddAreaModalOpen] = useState(false);
   const [newAreaName, setNewAreaName] = useState('');
   const [newAreaIsShared, setNewAreaIsShared] = useState(false);
@@ -218,10 +215,8 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     setSharedInfos(Array.isArray(config.sharedInfos) ? config.sharedInfos : []);
     setAlarms(Array.isArray(config.alarms) ? config.alarms : []);
     setActiveFloorId(migrateConfig(config)[0]?.id || null);
-    setApartmentGroupAddressBook(Array.isArray(config.importedGroupAddresses) ? config.importedGroupAddresses : []);
-    setApartmentGroupAddressFileName(config.importedGroupAddressesFileName || '');
-    setSharedGroupAddressBook(Array.isArray(config.sharedImportedGroupAddresses) ? config.sharedImportedGroupAddresses : []);
-    setSharedGroupAddressFileName(config.sharedImportedGroupAddressesFileName || '');
+    setHouseGroupAddressBook(Array.isArray(config.importedGroupAddresses) ? config.importedGroupAddresses : []);
+    setHouseGroupAddressFileName(config.importedGroupAddressesFileName || '');
   }, [apartment?.id]);
 
 
@@ -233,13 +228,8 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
 
   // ── Floor helpers ────────────────────────────────────────
   const activeFloor = floors.find(f => f.id === activeFloorId) || floors[0];
-  const useApartmentXmlForModal = groupAddressModal.scope === 'shared' && sharedUsesApartmentImportedGroupAddresses;
-  const modalAddressBook = useApartmentXmlForModal
-    ? apartmentGroupAddressBook
-    : (groupAddressModal.scope === 'shared' ? sharedGroupAddressBook : apartmentGroupAddressBook);
-  const modalAddressFileName = useApartmentXmlForModal
-    ? apartmentGroupAddressFileName
-    : (groupAddressModal.scope === 'shared' ? sharedGroupAddressFileName : apartmentGroupAddressFileName);
+  const modalAddressBook = houseGroupAddressBook;
+  const modalAddressFileName = houseGroupAddressFileName;
 
   const stripSharedMarker = (entries) => entries.map(({ isShared, ...floor }) => ({
     ...floor,
@@ -256,10 +246,8 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     nextFloors = floors,
     nextSharedInfos = sharedInfos,
     nextAlarms = alarms,
-    nextApartmentGroupAddressBook = apartmentGroupAddressBook,
-    nextApartmentGroupAddressFileName = apartmentGroupAddressFileName,
-    nextSharedGroupAddressBook = sharedGroupAddressBook,
-    nextSharedGroupAddressFileName = sharedGroupAddressFileName,
+    nextHouseGroupAddressBook = houseGroupAddressBook,
+    nextHouseGroupAddressFileName = houseGroupAddressFileName,
   } = {}) => {
     const privateFloors = stripSharedMarker(nextFloors.filter((floor) => !floor.isShared));
     const sharedAreas = stripSharedMarker(nextFloors.filter((floor) => floor.isShared));
@@ -271,16 +259,20 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
         ...fullConfig.building,
         sharedInfos: nextSharedInfos,
         sharedAreas,
-        sharedImportedGroupAddresses: nextSharedGroupAddressBook,
-        sharedImportedGroupAddressesFileName: nextSharedGroupAddressFileName,
+        importedGroupAddresses: nextHouseGroupAddressBook,
+        importedGroupAddressesFileName: nextHouseGroupAddressFileName,
+        sharedImportedGroupAddresses: nextHouseGroupAddressBook,
+        sharedImportedGroupAddressesFileName: nextHouseGroupAddressFileName,
       },
-      apartments: fullConfig.apartments.map((entry) => entry.id !== apartment.id ? entry : ({
+      apartments: fullConfig.apartments.map((entry) => ({
         ...entry,
-        floors: privateFloors,
-        areaOrder,
-        alarms: nextAlarms,
-        importedGroupAddresses: nextApartmentGroupAddressBook,
-        importedGroupAddressesFileName: nextApartmentGroupAddressFileName,
+        ...(entry.id === apartment.id ? {
+          floors: privateFloors,
+          areaOrder,
+          alarms: nextAlarms,
+        } : {}),
+        importedGroupAddresses: [],
+        importedGroupAddressesFileName: '',
       })),
     };
   };
@@ -526,9 +518,8 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
   };
 
   const saveSharedInfos = async (nextInfos = sharedInfos) => {
-    const sharedAddressBook = sharedUsesApartmentImportedGroupAddresses ? apartmentGroupAddressBook : sharedGroupAddressBook;
     const normalizedInfos = nextInfos.map((info) => {
-      const resolvedDpt = info?.dpt || getImportedGroupAddressDpt(sharedAddressBook, info?.statusGroupAddress);
+      const resolvedDpt = info?.dpt || getImportedGroupAddressDpt(houseGroupAddressBook, info?.statusGroupAddress);
       return resolvedDpt ? { ...info, dpt: resolvedDpt } : info;
     });
     setSharedInfos(normalizedInfos);
@@ -543,7 +534,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
 
   const saveAlarms = async (nextAlarms = alarms) => {
     const normalizedAlarms = nextAlarms.map((alarm) => {
-      const resolvedDpt = alarm?.dpt || getImportedGroupAddressDpt(apartmentGroupAddressBook, alarm?.statusGroupAddress);
+      const resolvedDpt = alarm?.dpt || getImportedGroupAddressDpt(houseGroupAddressBook, alarm?.statusGroupAddress);
       return resolvedDpt ? { ...alarm, dpt: resolvedDpt } : alarm;
     });
     setAlarms(normalizedAlarms);
@@ -827,41 +818,23 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
 
   const importGroupAddresses = async (addresses, fileName) => {
     try {
-      if (groupAddressModal.scope === 'shared') {
-        setSharedGroupAddressBook(addresses);
-        setSharedGroupAddressFileName(fileName);
-        await persistConfig(buildNextConfig({
-          nextSharedGroupAddressBook: addresses,
-          nextSharedGroupAddressFileName: fileName,
-        }));
-      } else {
-        setApartmentGroupAddressBook(addresses);
-        setApartmentGroupAddressFileName(fileName);
-        await persistConfig(buildNextConfig({
-          nextApartmentGroupAddressBook: addresses,
-          nextApartmentGroupAddressFileName: fileName,
-        }));
-      }
+      setHouseGroupAddressBook(addresses);
+      setHouseGroupAddressFileName(fileName);
+      await persistConfig(buildNextConfig({
+        nextHouseGroupAddressBook: addresses,
+        nextHouseGroupAddressFileName: fileName,
+      }));
       addToast(`Imported ${addresses.length} group addresses`, 'success'); fetchConfig();
     } catch { addToast('Failed to persist imported group addresses', 'error'); }
   };
   const clearGroupAddresses = async () => {
     try {
-      if (groupAddressModal.scope === 'shared') {
-        setSharedGroupAddressBook([]);
-        setSharedGroupAddressFileName('');
-        await persistConfig(buildNextConfig({
-          nextSharedGroupAddressBook: [],
-          nextSharedGroupAddressFileName: '',
-        }));
-      } else {
-        setApartmentGroupAddressBook([]);
-        setApartmentGroupAddressFileName('');
-        await persistConfig(buildNextConfig({
-          nextApartmentGroupAddressBook: [],
-          nextApartmentGroupAddressFileName: '',
-        }));
-      }
+      setHouseGroupAddressBook([]);
+      setHouseGroupAddressFileName('');
+      await persistConfig(buildNextConfig({
+        nextHouseGroupAddressBook: [],
+        nextHouseGroupAddressFileName: '',
+      }));
       addToast('Imported group addresses cleared', 'success'); fetchConfig();
     } catch { addToast('Failed to clear imported group addresses', 'error'); }
   };
@@ -931,9 +904,8 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
   const filteredHueLamps = hueLamps.filter(l => l.name.toLowerCase().includes(hueLampSearch.trim().toLowerCase()));
   const filteredHueRooms = hueRooms.filter(r => r.name.toLowerCase().includes(hueRoomSearch.trim().toLowerCase()));
   const filteredHueScenes = hueScenes.filter(s => s.name.toLowerCase().includes(hueSceneSearch.trim().toLowerCase()));
-  const sharedBrowsingGroupAddressBook = sharedUsesApartmentImportedGroupAddresses ? apartmentGroupAddressBook : sharedGroupAddressBook;
-  const resolveApartmentGroupAddressName = (address) => getImportedGroupAddressName(apartmentGroupAddressBook, address);
-  const resolveSharedGroupAddressName = (address) => getImportedGroupAddressName(sharedBrowsingGroupAddressBook, address);
+  const resolveApartmentGroupAddressName = (address) => getImportedGroupAddressName(houseGroupAddressBook, address);
+  const resolveSharedGroupAddressName = (address) => getImportedGroupAddressName(houseGroupAddressBook, address);
   const resolveGroupAddressNameForFloor = (floorId, address) => {
     const floor = floorsRef.current.find((entry) => entry.id === floorId);
     return floor?.isShared ? resolveSharedGroupAddressName(address) : resolveApartmentGroupAddressName(address);
@@ -1200,6 +1172,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
         dptFilter={groupAddressModal.dptFilter}
         allowUpload={groupAddressModal.allowUpload}
         helperText={groupAddressModal.helperText}
+        preferredTopLevelRangeName={apartment?.name || ''}
       />
 
       <ConfirmDialog

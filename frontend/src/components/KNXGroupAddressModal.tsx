@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, Upload, X, FileText, Trash2, Check } from 'lucide-react';
 import { parseKNXGroupAddressXML } from '../knx-xml-parser';
@@ -29,23 +29,7 @@ function inferFunctionTypeFromAddress(address) {
   return null;
 }
 
-function isAddressSupported(address) {
-  const normalizedDpt = normalizeDptPrefix(address?.dpt);
-  const isSupportedDptFamily = (
-    normalizedDpt.startsWith('1.') ||
-    normalizedDpt.startsWith('5.') ||
-    normalizedDpt.startsWith('9.') ||
-    normalizedDpt.startsWith('17.')
-  );
-
-  if (address?.supported === true) return true;
-  if (address?.supported === false) return isSupportedDptFamily;
-  return isSupportedDptFamily || ['switch', 'percentage', 'scene', 'temperature'].includes(inferFunctionTypeFromAddress(address));
-}
-
 function isAddressAllowedForMode(address, mode, dptFilter) {
-  if (!isAddressSupported(address)) return false;
-
   const functionType = inferFunctionTypeFromAddress(address);
   if (dptFilter) {
     const normalizedFilter = normalizeDptPrefix(dptFilter);
@@ -73,6 +57,10 @@ function getModeBadgeLabel(mode, dptFilter) {
   return lbl;
 }
 
+function formatImportSummary(fileName, count) {
+  return `Imported ${count} group addresses from ${fileName}.`;
+}
+
 export function KNXGroupAddressModal({
   isOpen,
   title,
@@ -86,25 +74,54 @@ export function KNXGroupAddressModal({
   dptFilter = null,
   allowUpload = false,
   helperText,
+  preferredTopLevelRangeName = '',
 }) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [roomFilter, setRoomFilter] = useState('all');
+  const [topLevelRangeFilter, setTopLevelRangeFilter] = useState('all');
   const [importError, setImportError] = useState('');
   const [importSuccess, setImportSuccess] = useState('');
   const fileInputRef = useRef(null);
-
-  const supportedAddresses = useMemo(
-    () => addresses.filter((address) => isAddressSupported(address)),
-    [addresses]
-  );
-  const unsupportedCount = addresses.length - supportedAddresses.length;
+  const filterSelectableOnly = !allowUpload;
 
   const visibleAddresses = useMemo(
-    () => supportedAddresses.filter((address) => isAddressAllowedForMode(address, mode, dptFilter)),
-    [supportedAddresses, mode, dptFilter]
+    () => (
+      filterSelectableOnly
+        ? addresses.filter((address) => isAddressAllowedForMode(address, mode, dptFilter))
+        : addresses
+    ),
+    [addresses, mode, dptFilter, filterSelectableOnly]
   );
 
+  const topLevelRangeOptions = useMemo(() => {
+    const names = new Set(
+      visibleAddresses
+        .map((address) => (address.topLevelRange || address.rangePath?.[0] || '').trim())
+        .filter(Boolean)
+    );
+    return ['all', ...Array.from(names)];
+  }, [visibleAddresses]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (allowUpload) {
+      setTopLevelRangeFilter('all');
+      return;
+    }
+
+    const normalizedPreferredName = String(preferredTopLevelRangeName || '').trim().toLowerCase();
+    const matchingOption = topLevelRangeOptions.find((option) => (
+      option !== 'all' && option.trim().toLowerCase() === normalizedPreferredName
+    ));
+
+    setTopLevelRangeFilter(matchingOption || 'all');
+  }, [isOpen, allowUpload, preferredTopLevelRangeName, topLevelRangeOptions]);
+
   const filteredAddresses = visibleAddresses.filter((address) => {
+    const addressTopLevelRange = (address.topLevelRange || address.rangePath?.[0] || '').trim();
+    if (topLevelRangeFilter !== 'all' && addressTopLevelRange !== topLevelRangeFilter) {
+      return false;
+    }
+
     const normalizedQuery = searchQuery.trim().toLowerCase();
 
     return !normalizedQuery || [
@@ -122,6 +139,7 @@ export function KNXGroupAddressModal({
 
   const handleClose = () => {
     setSearchQuery('');
+    setTopLevelRangeFilter('all');
     setImportError('');
     setImportSuccess('');
     onClose();
@@ -149,9 +167,7 @@ export function KNXGroupAddressModal({
 
         const parsedAddresses = parseKNXGroupAddressXML(xmlContent);
         onImport(parsedAddresses, file.name);
-            const supportedCount = parsedAddresses.filter((address) => address.supported).length;
-        const droppedCount = parsedAddresses.length - supportedCount;
-        setImportSuccess(`Imported ${supportedCount} supported group addresses from ${file.name}${droppedCount ? ` (${droppedCount} unsupported filtered out)` : ''}.`);
+        setImportSuccess(formatImportSummary(file.name, parsedAddresses.length));
       } catch (error) {
         setImportError(error.message || 'Failed to parse XML file.');
       }
@@ -202,9 +218,9 @@ export function KNXGroupAddressModal({
               )}
             </div>
 
-            {importedFileName && addresses.length > 0 && (
+            {importedFileName && addresses.length > 0 && !importSuccess && (
               <p style={{ margin: '0.75rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-                Loaded file: <strong style={{ color: 'var(--text-primary)' }}>{importedFileName}</strong> with {supportedAddresses.length} supported addresses.
+                {formatImportSummary(importedFileName, addresses.length)}
               </p>
             )}
 
@@ -222,30 +238,50 @@ export function KNXGroupAddressModal({
           </div>
         )}
 
-        {unsupportedCount > 0 && (
-          <div style={{ marginBottom: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-            {unsupportedCount} unsupported group address{unsupportedCount === 1 ? '' : 'es'} hidden because their DPT/DPST is not supported yet.
-          </div>
-        )}
-
         {modeBadgeLabel && (
           <div style={{ marginBottom: '0.75rem', color: 'var(--accent-color)', fontSize: '0.8rem', fontWeight: 600 }}>
             {modeBadgeLabel}
           </div>
         )}
 
-        <div style={{ marginBottom: '1rem' }}>
-          <div style={{ position: 'relative' }}>
-            <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
-            <input
-              className="form-input"
-              style={{ paddingLeft: '2.5rem' }}
-              type="text"
-              placeholder="Search by name, address, DPT or room"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              disabled={visibleAddresses.length === 0}
-            />
+        <div style={{ display: 'grid', gridTemplateColumns: topLevelRangeOptions.length > 1 ? 'minmax(180px, 220px) minmax(0, 1fr)' : '1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+          {topLevelRangeOptions.length > 1 && (
+            <div>
+              <label className="settings-field-label" style={{ marginBottom: '0.35rem', display: 'block' }}>
+                Top-Level Group Range
+              </label>
+              <select
+                className="form-input"
+                aria-label="Top-Level Group Range"
+                value={topLevelRangeFilter}
+                onChange={(event) => setTopLevelRangeFilter(event.target.value)}
+              >
+                <option value="all">Alle</option>
+                {topLevelRangeOptions.filter((option) => option !== 'all').map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div>
+            <label
+              className="settings-field-label"
+              style={{ marginBottom: '0.35rem', display: 'block', visibility: 'hidden' }}
+            >
+              Search
+            </label>
+            <div style={{ position: 'relative' }}>
+              <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+              <input
+                className="form-input"
+                style={{ paddingLeft: '2.5rem' }}
+                type="text"
+                placeholder="Search by name, address, DPT or room"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                disabled={visibleAddresses.length === 0}
+              />
+            </div>
           </div>
         </div>
 
@@ -270,7 +306,7 @@ export function KNXGroupAddressModal({
                     {address.address}{address.dpt ? ` · ${address.dpt}` : ''}
                   </div>
                   <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
-                    {address.room || 'Unknown room'}{address.rangePath?.length ? ` · ${address.rangePath.join(' / ')}` : ''}
+                    {address.rangePath?.length ? address.rangePath.join(' / ') : (address.room || 'Unknown room')}
                   </div>
                 </div>
               </button>
@@ -278,11 +314,11 @@ export function KNXGroupAddressModal({
           </div>
         )}
 
-        <div style={{ marginTop: '1rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
-          {visibleAddresses.length > 0
-            ? `Showing ${filteredAddresses.length} of ${visibleAddresses.length} supported addresses.`
-            : (allowUpload ? 'Import an ETS XML file to start.' : 'Import ETS group addresses in Connections to use this picker.')}
-        </div>
+        {visibleAddresses.length === 0 && (
+          <div style={{ marginTop: '1rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+            {allowUpload ? 'Import an ETS XML file to start.' : 'Import ETS group addresses in Setup to use this picker.'}
+          </div>
+        )}
       </div>
     </div>,
     document.body

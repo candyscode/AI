@@ -34,10 +34,36 @@ function normalizeImportedGroupAddresses(addresses) {
       address: typeof entry.address === 'string' ? entry.address : '',
       name: typeof entry.name === 'string' ? entry.name : '',
       dpt: normalizeDptString(entry.dpt),
+      room: typeof entry.room === 'string' ? entry.room : '',
+      rangePath: Array.isArray(entry.rangePath)
+        ? entry.rangePath.filter((part) => typeof part === 'string' && part.trim())
+        : [],
+      topLevelRange: typeof entry.topLevelRange === 'string' ? entry.topLevelRange : '',
       functionType: typeof entry.functionType === 'string' ? entry.functionType : '',
       supported: entry.supported !== false,
     }))
+    .map((entry) => ({
+      ...entry,
+      topLevelRange: entry.topLevelRange || entry.rangePath[0] || '',
+    }))
     .filter((entry) => entry.address && entry.name);
+}
+
+function mergeImportedGroupAddresses(...addressLists) {
+  const merged = [];
+  const seen = new Set();
+
+  addressLists.flat().forEach((entry) => {
+    if (!entry || typeof entry !== 'object') return;
+    const normalized = normalizeImportedGroupAddresses([entry])[0];
+    if (!normalized) return;
+    const key = normalized.address;
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(normalized);
+  });
+
+  return merged;
 }
 
 function normalizeRoom(room) {
@@ -241,6 +267,10 @@ function migrateLegacyConfig(input) {
       sharedUsesApartmentImportedGroupAddresses: false,
       sharedInfos,
       sharedAreas: [],
+      importedGroupAddresses: normalizeImportedGroupAddresses(input?.importedGroupAddresses),
+      importedGroupAddressesFileName: typeof input?.importedGroupAddressesFileName === 'string'
+        ? input.importedGroupAddressesFileName
+        : '',
       sharedImportedGroupAddresses: normalizeImportedGroupAddresses(input?.importedGroupAddresses),
       sharedImportedGroupAddressesFileName: typeof input?.importedGroupAddressesFileName === 'string'
         ? input.importedGroupAddressesFileName
@@ -261,10 +291,8 @@ function migrateLegacyConfig(input) {
         areaOrder: floors.map((area) => area.id),
         alarms,
         automations: [],
-        importedGroupAddresses: normalizeImportedGroupAddresses(input?.importedGroupAddresses),
-        importedGroupAddressesFileName: typeof input?.importedGroupAddressesFileName === 'string'
-          ? input.importedGroupAddressesFileName
-          : '',
+        importedGroupAddresses: [],
+        importedGroupAddressesFileName: '',
       },
     ],
   };
@@ -284,6 +312,23 @@ function normalizeConfigShape(input) {
     ? source.building.sharedAccessApartmentId
     : apartments[0].id;
 
+  const hasExplicitHouseImport = Array.isArray(source?.building?.importedGroupAddresses);
+  const hasExplicitHouseImportFileName = typeof source?.building?.importedGroupAddressesFileName === 'string';
+  const buildingImportedGroupAddresses = normalizeImportedGroupAddresses(source?.building?.importedGroupAddresses);
+  const fallbackImportedGroupAddresses = mergeImportedGroupAddresses(
+    source?.building?.sharedImportedGroupAddresses,
+    ...apartments.map((apartment) => apartment.importedGroupAddresses)
+  );
+  const importedGroupAddresses = hasExplicitHouseImport
+    ? buildingImportedGroupAddresses
+    : fallbackImportedGroupAddresses;
+  const importedGroupAddressesFileName =
+    hasExplicitHouseImportFileName
+      ? source.building.importedGroupAddressesFileName
+      : (typeof source?.building?.sharedImportedGroupAddressesFileName === 'string' && source.building.sharedImportedGroupAddressesFileName
+        ? source.building.sharedImportedGroupAddressesFileName
+        : (apartments.find((apartment) => apartment.importedGroupAddressesFileName)?.importedGroupAddressesFileName || ''));
+
   return {
     version: 2,
     building: {
@@ -298,6 +343,8 @@ function normalizeConfigShape(input) {
       sharedAreas: Array.isArray(source?.building?.sharedAreas)
         ? source.building.sharedAreas.map(normalizeArea)
         : [],
+      importedGroupAddresses,
+      importedGroupAddressesFileName,
       sharedImportedGroupAddresses: normalizeImportedGroupAddresses(source?.building?.sharedImportedGroupAddresses),
       sharedImportedGroupAddressesFileName: typeof source?.building?.sharedImportedGroupAddressesFileName === 'string'
         ? source.building.sharedImportedGroupAddressesFileName
@@ -368,5 +415,6 @@ module.exports = {
   normalizeAlarm,
   normalizeSharedInfo,
   normalizeAutomation,
+  mergeImportedGroupAddresses,
   slugifyApartmentName,
 };

@@ -131,6 +131,81 @@ describe('configModel migration and normalization', () => {
     expect(normalized.building.sharedImportedGroupAddresses[0].dpt).toBe('DPT9.005');
     expect(normalized.apartments[0].alarms[0].dpt).toBe('DPT1.001');
   });
+
+  it('preserves imported group range metadata for modal path display and top-level filtering', () => {
+    const normalized = normalizeConfigShape({
+      version: 2,
+      building: {
+        sharedAccessApartmentId: 'apartment_1',
+        sharedInfos: [],
+        sharedAreas: [],
+        sharedImportedGroupAddresses: [{
+          address: '1/0/2',
+          name: 'Flur KG: Licht Schalten',
+          dpt: 'DPST-1-1',
+          room: 'Flur KG',
+          rangePath: ['Allgemeinbereich', 'Licht, Steckdosen & Motoren'],
+          topLevelRange: 'Allgemeinbereich',
+          supported: true,
+        }],
+        sharedImportedGroupAddressesFileName: 'main.xml',
+      },
+      apartments: [{
+        id: 'apartment_1',
+        name: 'Wohnung Ost',
+        slug: 'wohnung-ost',
+        floors: [],
+        alarms: [],
+        importedGroupAddresses: [{
+          address: '3/0/0',
+          name: 'Flur OG: Licht Schalten',
+          dpt: 'DPST-1-1',
+          room: 'Flur OG',
+          rangePath: ['Wohnung Ost', 'Licht & Steckdosen'],
+          topLevelRange: 'Wohnung Ost',
+          supported: true,
+        }],
+      }],
+    });
+
+    expect(normalized.building.sharedImportedGroupAddresses[0]).toEqual(expect.objectContaining({
+      room: 'Flur KG',
+      rangePath: ['Allgemeinbereich', 'Licht, Steckdosen & Motoren'],
+      topLevelRange: 'Allgemeinbereich',
+      dpt: 'DPT1.001',
+    }));
+    expect(normalized.apartments[0].importedGroupAddresses[0]).toEqual(expect.objectContaining({
+      room: 'Flur OG',
+      rangePath: ['Wohnung Ost', 'Licht & Steckdosen'],
+      topLevelRange: 'Wohnung Ost',
+      dpt: 'DPT1.001',
+    }));
+  });
+
+  it('keeps the house-wide import empty when it was explicitly cleared', () => {
+    const normalized = normalizeConfigShape({
+      version: 2,
+      building: {
+        sharedAccessApartmentId: 'apartment_1',
+        importedGroupAddresses: [],
+        importedGroupAddressesFileName: '',
+        sharedInfos: [],
+        sharedAreas: [],
+      },
+      apartments: [{
+        id: 'apartment_1',
+        name: 'Wohnung Ost',
+        slug: 'wohnung-ost',
+        floors: [],
+        alarms: [],
+        importedGroupAddresses: [{ address: '3/0/0', name: 'Legacy Apartment Address', supported: true }],
+        importedGroupAddressesFileName: 'legacy.xml',
+      }],
+    });
+
+    expect(normalized.building.importedGroupAddresses).toEqual([]);
+    expect(normalized.building.importedGroupAddressesFileName).toBe('');
+  });
 });
 
 describe('normalizeDptString', () => {

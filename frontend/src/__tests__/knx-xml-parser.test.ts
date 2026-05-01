@@ -33,6 +33,8 @@ describe('parseKNXGroupAddressXML', () => {
           functionType: 'temperature',
           supported: true,
           room: 'Bad EG',
+          topLevelRange: 'Main',
+          rangePath: ['Main', 'Climate'],
         }),
         expect.objectContaining({
           name: 'Bad OG: Sollwertverschiebung',
@@ -68,6 +70,7 @@ describe('parseKNXGroupAddressXML', () => {
           name: 'Wohnbereich: Licht Schalten',
           functionType: 'switch',
           supported: true,
+          rangePath: ['Main', 'Lights'],
         }),
         expect.objectContaining({
           name: 'Büro: Raffstore Position (%)',
