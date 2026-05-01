@@ -41,6 +41,10 @@ export function migrateLegacyConfig(config) {
     building: {
       sharedAccessApartmentId: 'apartment_1',
       sharedUsesApartmentImportedGroupAddresses: false,
+      importedGroupAddresses: Array.isArray(config?.importedGroupAddresses)
+        ? config.importedGroupAddresses
+        : [],
+      importedGroupAddressesFileName: config?.importedGroupAddressesFileName || '',
       sharedInfos: Array.isArray(config?.globals)
         ? config.globals.filter((item) => item?.type !== 'alarm')
         : [],
@@ -68,10 +72,8 @@ export function migrateLegacyConfig(config) {
         alarms: Array.isArray(config?.globals)
           ? config.globals.filter((item) => item?.type === 'alarm')
           : [],
-        importedGroupAddresses: Array.isArray(config?.importedGroupAddresses)
-          ? config.importedGroupAddresses
-          : [],
-        importedGroupAddressesFileName: config?.importedGroupAddressesFileName || '',
+        importedGroupAddresses: [],
+        importedGroupAddressesFileName: '',
       },
     ],
   };
@@ -156,14 +158,16 @@ export function buildApartmentView(config, apartmentSlug) {
       areaOrder,
       sharedInfos: Array.isArray(normalized.building?.sharedInfos) ? normalized.building.sharedInfos : [],
       alarms: Array.isArray(apartment.alarms) ? apartment.alarms : [],
-      importedGroupAddresses: Array.isArray(apartment.importedGroupAddresses) ? apartment.importedGroupAddresses : [],
-      importedGroupAddressesFileName: apartment.importedGroupAddressesFileName || '',
-      sharedImportedGroupAddresses: Array.isArray(normalized.building?.sharedImportedGroupAddresses)
-        ? normalized.building.sharedImportedGroupAddresses
+      importedGroupAddresses: Array.isArray(normalized.building?.importedGroupAddresses)
+        ? normalized.building.importedGroupAddresses
         : [],
-      sharedImportedGroupAddressesFileName: normalized.building?.sharedImportedGroupAddressesFileName || '',
+      importedGroupAddressesFileName: normalized.building?.importedGroupAddressesFileName || '',
+      sharedImportedGroupAddresses: Array.isArray(normalized.building?.importedGroupAddresses)
+        ? normalized.building.importedGroupAddresses
+        : [],
+      sharedImportedGroupAddressesFileName: normalized.building?.importedGroupAddressesFileName || '',
       sharedAccessApartmentId: normalized.building?.sharedAccessApartmentId || apartment.id,
-      sharedUsesApartmentImportedGroupAddresses: normalized.building?.sharedUsesApartmentImportedGroupAddresses === true,
+      sharedUsesApartmentImportedGroupAddresses: false,
       sunTrigger: apartment.sunTrigger || { groupAddress: '', bus: 'apartment', dayValue: 1 },
       automations: Array.isArray(apartment.automations) ? apartment.automations : [],
     },

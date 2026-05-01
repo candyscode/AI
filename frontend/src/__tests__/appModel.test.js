@@ -56,7 +56,7 @@ describe('appModel migration and view building', () => {
       slug: 'wohnung-1',
       knxIp: '192.168.1.10',
     }));
-    expect(migrated.building.sharedImportedGroupAddressesFileName).toBe('legacy.xml');
+    expect(migrated.building.importedGroupAddressesFileName).toBe('legacy.xml');
   });
 
   it('builds the merged apartment view with private and shared areas ordered by areaOrder', () => {
@@ -64,11 +64,10 @@ describe('appModel migration and view building', () => {
       version: 2,
       building: {
         sharedAccessApartmentId: 'apartment_1',
-        sharedUsesApartmentImportedGroupAddresses: true,
         sharedInfos: [{ id: 'info-1', name: 'Outside Temperature', type: 'info', category: 'temperature' }],
         sharedAreas: [{ id: 'shared-garden', name: 'Garden', rooms: [] }],
-        sharedImportedGroupAddresses: [],
-        sharedImportedGroupAddressesFileName: '',
+        importedGroupAddresses: [{ address: '1/6/3', name: 'Outside Temperature', supported: true }],
+        importedGroupAddressesFileName: 'house.xml',
       },
       apartments: [
         {
@@ -102,7 +101,11 @@ describe('appModel migration and view building', () => {
     expect(view.apartmentConfig.sharedInfos).toEqual([
       expect.objectContaining({ name: 'Outside Temperature' }),
     ]);
-    expect(view.apartmentConfig.sharedUsesApartmentImportedGroupAddresses).toBe(true);
+    expect(view.apartmentConfig.importedGroupAddresses).toEqual([
+      expect.objectContaining({ address: '1/6/3', name: 'Outside Temperature' }),
+    ]);
+    expect(view.apartmentConfig.importedGroupAddressesFileName).toBe('house.xml');
+    expect(view.apartmentConfig.sharedUsesApartmentImportedGroupAddresses).toBe(false);
     expect(view.apartmentConfig.alarms).toEqual([
       expect.objectContaining({ name: 'Rain Alarm' }),
     ]);

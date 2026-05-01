@@ -17,11 +17,13 @@ vi.mock('../configApi', () => ({
 }));
 
 vi.mock('../components/KNXGroupAddressModal', () => ({
-  KNXGroupAddressModal: ({ isOpen, title, helperText, onImport, onClear }) => (
+  KNXGroupAddressModal: ({ isOpen, title, helperText, importedFileName, addresses = [], onImport, onClear }) => (
     isOpen ? (
       <div data-testid="knx-group-address-modal">
         <div>{title}</div>
         <div>{helperText}</div>
+        <div>file:{importedFileName || 'none'}</div>
+        <div>count:{addresses.length}</div>
         <button
           onClick={() => onImport?.([{ address: '1/2/3', name: 'Imported Address', supported: true }], `${title}.xml`)}
         >
@@ -47,11 +49,10 @@ const FULL_CONFIG = {
   version: 2,
   building: {
     sharedAccessApartmentId: 'apartment_1',
-    sharedUsesApartmentImportedGroupAddresses: false,
     sharedInfos: [{ id: 'info-1', name: 'Outside Temperature', type: 'info', category: 'temperature' }],
     sharedAreas: [{ id: 'shared-garden', name: 'Garden', rooms: [] }],
-    sharedImportedGroupAddresses: [{ address: '1/7/1', name: 'Garden Weather', supported: true }],
-    sharedImportedGroupAddressesFileName: 'shared.xml',
+    importedGroupAddresses: [{ address: '1/7/1', name: 'Garden Weather', supported: true }],
+    importedGroupAddressesFileName: 'house.xml',
   },
   apartments: [
     {
@@ -64,8 +65,8 @@ const FULL_CONFIG = {
       floors: [{ id: 'living', name: 'Living', rooms: [] }],
       areaOrder: ['living', 'shared-garden'],
       alarms: [{ id: 'alarm-1', name: 'Rain Alarm', type: 'alarm', category: 'alarm' }],
-      importedGroupAddresses: [{ address: '2/1/1', name: 'East Line', supported: true }],
-      importedGroupAddressesFileName: 'ost.xml',
+      importedGroupAddresses: [],
+      importedGroupAddressesFileName: '',
     },
     {
       id: 'apartment_2',
@@ -139,9 +140,9 @@ describe('Connections — multi-apartment setup grouping', () => {
     renderConnections();
 
     expect(screen.getByText('Building Setup')).toBeInTheDocument();
-    expect(screen.getByText('Current Apartment')).toBeInTheDocument();
-    expect(screen.getByText('Main Line Setup')).toBeInTheDocument();
-    expect(screen.getByText('Manage Apartments')).toBeInTheDocument();
+    expect(screen.getByText('This Apartment')).toBeInTheDocument();
+    expect(screen.getByText('Shared KNX Data & Main Line')).toBeInTheDocument();
+    expect(screen.getByText('Apartment List')).toBeInTheDocument();
     expect(screen.getAllByText(/Main Line via Wohnung Ost offline/i).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /save apartment/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /save shared setup/i })).not.toBeInTheDocument();
@@ -150,12 +151,10 @@ describe('Connections — multi-apartment setup grouping', () => {
   it('makes clear that main line ETS setup is building-wide even when another apartment is selected', () => {
     renderConnections(FULL_CONFIG, 'wohnung-west');
 
-    expect(screen.getByText(/ets xml for main line and central knx group addresses/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/main line access uses wohnung ost/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/not this apartment/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(hasTextContent(/edit this in wohnung ost only/i)).length).toBeGreaterThan(0);
-    expect(screen.queryByRole('checkbox', { name: /use main line apartment's ets xml/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /manage main line ets xml/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/upload one ets export for the entire house, including all apartments and the main line/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/the app reaches the main line through wohnung ost/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/this xml is used for xml match hints and all browse dialogs across the app/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /manage house ets xml/i })).toBeInTheDocument();
   });
 });
 
@@ -199,7 +198,7 @@ describe('Connections — apartment-specific persistence', () => {
   it('auto-saves the current apartment identity and gateway settings on blur', async () => {
     renderConnections();
 
-    const identityHeading = screen.getByText('Identity & KNX Gateway');
+    const identityHeading = screen.getByText('Apartment Name, URL & KNX Gateway');
     const identityCard = identityHeading.closest('section');
     const [nameInput, slugInput, ipInput] = within(identityCard).getAllByRole('textbox');
     const portInput = within(identityCard).getByRole('spinbutton');
@@ -214,7 +213,7 @@ describe('Connections — apartment-specific persistence', () => {
       expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
         building: expect.objectContaining({
           sharedAccessApartmentId: 'apartment_1',
-          sharedImportedGroupAddressesFileName: 'shared.xml',
+          importedGroupAddressesFileName: 'house.xml',
         }),
         apartments: expect.arrayContaining([
           expect.objectContaining({
@@ -279,28 +278,61 @@ describe('Connections — apartment-specific persistence', () => {
     expect(within(sunTriggerCard).getByText('Garden Weather')).toBeInTheDocument();
   });
 
-  it('opens the apartment ETS modal and persists imported addresses in the apartment scope', async () => {
+  it('opens the house ETS modal and persists imported addresses in the building scope', async () => {
     const user = userEvent.setup();
     renderConnections();
 
-    await user.click(screen.getByRole('button', { name: /manage apartment ets xml/i }));
+    await user.click(screen.getByRole('button', { name: /manage house ets xml/i }));
     expect(screen.getByTestId('knx-group-address-modal')).toBeInTheDocument();
-    expect(screen.getByText('Apartment ETS XML import')).toBeInTheDocument();
+    expect(screen.getByText('House ETS XML import')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /import mock xml/i }));
 
     await waitFor(() => {
       expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+        building: expect.objectContaining({
+          importedGroupAddresses: [expect.objectContaining({ address: '1/2/3', name: 'Imported Address' })],
+          importedGroupAddressesFileName: 'House ETS XML import.xml',
+        }),
+      }));
+    });
+  });
+
+  it('shows the currently imported house ETS file and address count when reopening the modal', async () => {
+    const user = userEvent.setup();
+    renderConnections();
+
+    await user.click(screen.getByRole('button', { name: /manage house ets xml/i }));
+
+    expect(screen.getByText('file:house.xml')).toBeInTheDocument();
+    expect(screen.getByText('count:1')).toBeInTheDocument();
+  });
+
+  it('clears the house ETS import without restoring legacy apartment XML data', async () => {
+    const user = userEvent.setup();
+    renderConnections();
+
+    await user.click(screen.getByRole('button', { name: /manage house ets xml/i }));
+    await user.click(screen.getByRole('button', { name: /clear mock xml/i }));
+
+    await waitFor(() => {
+      expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+        building: expect.objectContaining({
+          importedGroupAddresses: [],
+          importedGroupAddressesFileName: '',
+        }),
         apartments: expect.arrayContaining([
           expect.objectContaining({
             id: 'apartment_1',
-            importedGroupAddresses: [expect.objectContaining({ address: '1/2/3', name: 'Imported Address' })],
-            importedGroupAddressesFileName: 'Apartment ETS XML import.xml',
+            importedGroupAddresses: [],
+            importedGroupAddressesFileName: '',
+          }),
+          expect.objectContaining({
+            id: 'apartment_2',
+            importedGroupAddresses: [],
+            importedGroupAddressesFileName: '',
           }),
         ]),
-        building: expect.objectContaining({
-          sharedImportedGroupAddressesFileName: 'shared.xml',
-        }),
       }));
     });
   });
@@ -324,62 +356,11 @@ describe('Connections — main line setup', () => {
     expect(addToast).not.toHaveBeenCalledWith('Main line settings saved', 'success');
   });
 
-  it('opens the main line ETS modal and persists imported addresses in the building scope', async () => {
-    const user = userEvent.setup();
-    renderConnections();
-
-    await user.click(screen.getByRole('button', { name: /manage main line ets xml/i }));
-    expect(screen.getByText('Main Line ETS XML import')).toBeInTheDocument();
-    expect(screen.getByText(/upload the ets xml for the main line and central functions/i)).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /import mock xml/i }));
-
-    await waitFor(() => {
-      expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
-        building: expect.objectContaining({
-          sharedImportedGroupAddresses: [expect.objectContaining({ address: '1/2/3', name: 'Imported Address' })],
-          sharedImportedGroupAddressesFileName: 'Main Line ETS XML import.xml',
-        }),
-        apartments: expect.arrayContaining([
-          expect.objectContaining({
-            id: 'apartment_1',
-            importedGroupAddressesFileName: 'ost.xml',
-          }),
-        ]),
-      }));
-    });
-  });
-
-  it('can switch main line browsing to the apartment ETS XML and clears dedicated main line XML after confirmation', async () => {
-    const user = userEvent.setup();
-    renderConnections();
-
-    await user.click(screen.getByRole('checkbox', { name: /use main line apartment's ets xml/i }));
-    expect(screen.getByText('Use Main Line Apartment ETS XML')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Use Main Line XML' }));
-
-    expect(screen.queryByRole('button', { name: /manage main line ets xml/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/using wohnung ost's apartment xml for main line browsing/i)).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
-        building: expect.objectContaining({
-          sharedUsesApartmentImportedGroupAddresses: true,
-          sharedImportedGroupAddresses: [],
-          sharedImportedGroupAddressesFileName: '',
-        }),
-      }));
-    });
-  });
-
-  it('renders the main line ETS card as read-only when another apartment provides main line access', () => {
+  it('keeps the house ETS card editable when another apartment provides main line access', () => {
     renderConnections(FULL_CONFIG, 'wohnung-west');
 
-    expect(screen.getAllByText(hasTextContent(/edit this in wohnung ost only/i)).length).toBeGreaterThan(0);
-    expect(screen.getByText(/shared\.xml/i)).toBeInTheDocument();
-    expect(screen.queryByRole('checkbox', { name: /use main line apartment's ets xml/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /manage main line ets xml/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/house\.xml/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /manage house ets xml/i })).toBeInTheDocument();
   });
 });
 
@@ -441,11 +422,10 @@ describe('Connections — full config backup', () => {
       version: 2,
       building: {
         sharedAccessApartmentId: 'apartment_99',
-        sharedUsesApartmentImportedGroupAddresses: false,
         sharedInfos: [],
         sharedAreas: [],
-        sharedImportedGroupAddresses: [],
-        sharedImportedGroupAddressesFileName: '',
+        importedGroupAddresses: [],
+        importedGroupAddressesFileName: '',
       },
       apartments: [
         {

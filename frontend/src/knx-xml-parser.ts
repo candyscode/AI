@@ -55,6 +55,7 @@ export interface ImportedGroupAddress {
   dpt: string;
   room: string;
   rangePath: string[];
+  topLevelRange: string;
   functionType: 'switch' | 'percentage' | 'scene' | 'temperature' | null;
   supported: boolean;
 }
@@ -104,6 +105,7 @@ export function parseKNXGroupAddressXML(xmlString: string): ImportedGroupAddress
       dpt,
       room: derivedRoom || fallbackRoom,
       rangePath,
+      topLevelRange: rangePath[0] || '',
       functionType,
       supported: isSupportedGroupAddress(dpt, functionType),
     };

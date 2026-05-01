@@ -91,7 +91,6 @@ const FULL_CONFIG = {
   version: 2,
   building: {
     sharedAccessApartmentId: 'apartment_1',
-    sharedUsesApartmentImportedGroupAddresses: false,
     sharedInfos: [
       {
         id: 'info-1',
@@ -108,8 +107,8 @@ const FULL_CONFIG = {
         rooms: [{ id: 'shared-room-1', name: 'Garden Lights', scenes: [], functions: [] }],
       },
     ],
-    sharedImportedGroupAddresses: [{ address: '1/6/3', name: 'Shared Weather', supported: true }],
-    sharedImportedGroupAddressesFileName: 'shared.xml',
+    importedGroupAddresses: [{ address: '1/6/3', name: 'Shared Weather', supported: true }],
+    importedGroupAddressesFileName: 'house.xml',
   },
   apartments: [
     {
@@ -539,21 +538,15 @@ describe('Settings — central information and apartment alarms', () => {
     });
   });
 
-  it('uses the apartment ETS XML for main line GA browsing when configured', async () => {
+  it('uses the house ETS XML for central GA browsing', async () => {
     const user = userEvent.setup();
-    renderSettings({
-      ...FULL_CONFIG,
-      building: {
-        ...FULL_CONFIG.building,
-        sharedUsesApartmentImportedGroupAddresses: true,
-      },
-    });
+    renderSettings();
 
     await user.click(screen.getByRole('button', { name: /global info & alarms/i }));
     await user.click(screen.getAllByTitle('Browse ETS addresses')[0]);
 
     expect(screen.getByTestId('knx-group-address-modal')).toBeInTheDocument();
-    expect(screen.getByText('file:apartment.xml')).toBeInTheDocument();
+    expect(screen.getByText('file:house.xml')).toBeInTheDocument();
     expect(screen.getByText('count:1')).toBeInTheDocument();
   });
 
@@ -563,8 +556,8 @@ describe('Settings — central information and apartment alarms', () => {
       ...FULL_CONFIG,
       building: {
         ...FULL_CONFIG.building,
-        sharedImportedGroupAddresses: [{ address: '1/6/3', name: 'Aussentemperatur', dpt: 'DPST-9-1', supported: true }],
-        sharedImportedGroupAddressesFileName: 'ga1.xml',
+        importedGroupAddresses: [{ address: '1/6/3', name: 'Aussentemperatur', dpt: 'DPST-9-1', supported: true }],
+        importedGroupAddressesFileName: 'ga1.xml',
       },
     });
 
