@@ -1,5 +1,6 @@
 const knx = require('knx');
 const DPTLib = require('knx/src/dptlib');
+const { createLogger } = require('./logger');
 
 function normalizeDptString(dpt) {
   const raw = typeof dpt === 'string' ? dpt.trim() : '';
@@ -29,7 +30,7 @@ function normalizeDptString(dpt) {
 }
 
 class KnxService {
-  constructor(io) {
+  constructor(io, options = {}) {
     this.connection = null;
     this.io = io;
     this.isConnected = false;
@@ -37,6 +38,16 @@ class KnxService {
     this.gaToType = {};
     this.gaToDpt = {};
     this.sceneTriggerCallback = null;
+    this.label = options.label || 'knx';
+    this.logger = createLogger(['KNX', this.label]);
+    this.connectionState = 'idle';
+    this.lastStatusMessage = null;
+    this.lastErrorMessage = null;
+  }
+
+  setLabel(label) {
+    this.label = label || 'knx';
+    this.logger = createLogger(['KNX', this.label]);
   }
 
   setGaToType(map) {
@@ -55,6 +66,26 @@ class KnxService {
     this.sceneTriggerCallback = callback;
   }
 
+  emitKnxStatus(connected, msg) {
+    const signature = `${connected}:${msg}`;
+    if (this.lastStatusMessage === signature) return;
+    this.lastStatusMessage = signature;
+    this.io.emit('knx_status', { connected, msg });
+  }
+
+  emitKnxError(msg) {
+    if (this.lastErrorMessage === msg) return;
+    this.lastErrorMessage = msg;
+    this.io.emit('knx_error', { msg });
+  }
+
+  setConnectionState(nextState) {
+    this.connectionState = nextState;
+    if (nextState === 'connected') {
+      this.lastErrorMessage = null;
+    }
+  }
+
   connect(ipAddress, port = 3671, onConnectCallback = null) {
     // Disconnect existing connection first, then wait for it to close
     if (this.connection) {
@@ -62,20 +93,22 @@ class KnxService {
       try {
         this.connection.Disconnect();
       } catch (e) {
-        console.error('Error disconnecting previous connection:', e);
+        this.logger.warn('Failed to disconnect previous connection', { error: e.message });
       }
       this.connection = null;
       this.isConnected = false;
     }
 
     if (!ipAddress) {
-      console.log('No KNX IP address provided in config');
+      this.setConnectionState('idle');
+      this.logger.info('No KNX gateway configured');
       this._reconnecting = false;
       return;
     }
 
-    console.log(`Connecting to KNX interface at ${ipAddress}:${port}...`);
-    this.io.emit('knx_status', { connected: false, msg: 'Connecting to KNX gateway...' });
+    this.setConnectionState('connecting');
+    this.logger.info('Connecting to gateway', { ip: ipAddress, port });
+    this.emitKnxStatus(false, 'Connecting to KNX gateway...');
 
     // Give the KNX library time to fully close the previous tunnel before opening a new one
     setTimeout(() => {
@@ -83,12 +116,14 @@ class KnxService {
         this.connection = new knx.Connection({
           ipAddr: ipAddress,
           ipPort: port,
+          loglevel: 'error',
           handlers: {
             connected: () => {
-              console.log('Connected to KNX system at', ipAddress);
               this._reconnecting = false;
               this.isConnected = true;
-              this.io.emit('knx_status', { connected: true, msg: 'Connected successfully to bus' });
+              this.setConnectionState('connected');
+              this.logger.info('Connected', { ip: ipAddress, port });
+              this.emitKnxStatus(true, 'Connected successfully to bus');
               if (onConnectCallback) onConnectCallback();
             },
             event: (evt, src, dest, value) => {
@@ -105,7 +140,11 @@ class KnxService {
                       parsedValue = DPTLib.fromBuffer(value, dpt);
                     }
                   } catch (e) {
-                    console.error(`Failed to parse DPT ${dptString} for ${dest}:`, e.message);
+                    this.logger.warn('Failed to parse incoming value', {
+                      ga: dest,
+                      dpt: dptString,
+                      error: e.message,
+                    });
                   }
                 } else if (value.length === 1) {
                   if (type === 'percentage') {
@@ -135,26 +174,33 @@ class KnxService {
               }
             },
             error: (connstatus) => {
-              console.error('KNX Connection Error:', connstatus);
               this.isConnected = false;
-              this.io.emit('knx_error', { msg: `Bus access failed: ${connstatus}. Check IP interface.` });
-              this.io.emit('knx_status', { connected: false, msg: 'Disconnected from bus' });
+              if (this.connectionState !== 'offline') {
+                this.logger.warn('Connection lost', { reason: connstatus });
+              }
+              this.setConnectionState('offline');
+              this.emitKnxError(`Bus access failed: ${connstatus}. Check IP interface.`);
+              this.emitKnxStatus(false, 'Disconnected from bus');
             },
             disconnected: () => {
-              console.log('KNX Disconnected');
               this.isConnected = false;
+              if (this.connectionState !== 'offline' && !this._reconnecting) {
+                this.logger.warn('Disconnected from KNX gateway');
+              }
+              this.setConnectionState('offline');
               // Don't broadcast offline if we're intentionally reconnecting to a new IP
               if (!this._reconnecting) {
-                this.io.emit('knx_status', { connected: false, msg: 'Disconnected from bus' });
+                this.emitKnxStatus(false, 'Disconnected from bus');
               }
             }
           }
         });
       } catch (err) {
-        console.error('Failed to initialize KNX connection:', err.message);
         this.isConnected = false;
-        this.io.emit('knx_error', { msg: `Invalid IP Configuration: ${err.message}` });
-        this.io.emit('knx_status', { connected: false, msg: 'Disconnected (Invalid IP)' });
+        this.setConnectionState('offline');
+        this.logger.error('Failed to initialize KNX connection', { error: err.message });
+        this.emitKnxError(`Invalid IP Configuration: ${err.message}`);
+        this.emitKnxStatus(false, 'Disconnected (Invalid IP)');
       }
     }, 500);
   }
@@ -163,9 +209,8 @@ class KnxService {
     if (!this.isConnected || !this.connection) return;
     try {
       this.connection.read(groupAddress);
-      console.log(`Requested status read for ${groupAddress}`);
     } catch(e) {
-      console.error(`Error requesting status read for ${groupAddress}:`, e.message);
+      this.logger.warn('Failed to request status read', { ga: groupAddress, error: e.message });
     }
   }
 
@@ -177,14 +222,12 @@ class KnxService {
     if (dpt === 'DPT5.001') {
       try {
         this.connection.write(groupAddress, value, 'DPT5.001');
-        console.log(`Writing percentage ${value}% to ${groupAddress}`);
       } catch (e) {
         throw new Error(`Failed to write percentage to ${groupAddress}: ` + e.message);
       }
     } else {
       try {
         this.connection.write(groupAddress, value ? 1 : 0, 'DPT1');
-        console.log(`Writing switch ${value ? 'ON' : 'OFF'} to ${groupAddress}`);
       } catch (e) {
         throw new Error(`Failed to write boolean to ${groupAddress}: ` + e.message);
       }
@@ -200,8 +243,6 @@ class KnxService {
     const validSceneNum = isNaN(parsedSceneNum) ? 1 : parsedSceneNum;
     // Scene numbers 1-64 map to bus values 0-63 (offset by -1)
     const busValue = Math.max(0, Math.min(63, validSceneNum - 1));
-    
-    console.log(`Writing scene ${validSceneNum} (bus val: ${busValue}) to ${groupAddress}`);
     this.connection.write(groupAddress, busValue, 'DPT17.001');
   }
 
@@ -211,7 +252,6 @@ class KnxService {
     }
     // For 1-bit values like on/off (DPT 1.001)
     const busValue = value ? 1 : 0;
-    console.log(`Writing bit ${busValue} to ${groupAddress}`);
     this.connection.write(groupAddress, busValue, 'DPT1.001');
   }
 
@@ -220,7 +260,6 @@ class KnxService {
        throw new Error('Not connected to KNX bus');
      }
      // For percentages 0-100% (DPT 5.001)
-     console.log(`Writing percentage ${value}% to ${groupAddress}`);
      this.connection.write(groupAddress, parseInt(value, 10), 'DPT5.001');
   }
 }

@@ -7,7 +7,9 @@
  * expected Socket.IO events.
  */
 
-jest.mock('knx');
+jest.mock('knx', () => ({
+  Connection: jest.fn(),
+}));
 
 const knx = require('knx');
 const KnxService = require('../../knxService');
@@ -66,6 +68,19 @@ describe('KnxService — unit', () => {
       );
     });
 
+    it('creates the KNX connection with loglevel=error to suppress library noise', () => {
+      jest.useFakeTimers();
+      setupKnxMock();
+      service.connect('192.168.1.85', 3671);
+      jest.runAllTimers();
+      expect(knx.Connection).toHaveBeenCalledWith(expect.objectContaining({
+        ipAddr: '192.168.1.85',
+        ipPort: 3671,
+        loglevel: 'error',
+      }));
+      jest.useRealTimers();
+    });
+
     it('does nothing when no IP is provided', () => {
       service.connect('', 3671);
       expect(knx.Connection).not.toHaveBeenCalled();
@@ -112,6 +127,30 @@ describe('KnxService — unit', () => {
       capturedHandlers.connected();
       capturedHandlers.disconnected();
       expect(service.isConnected).toBe(false);
+      jest.useRealTimers();
+    });
+
+    it('does not emit duplicate offline statuses for repeated disconnect/error callbacks', () => {
+      jest.useFakeTimers();
+      const { capturedHandlers } = setupKnxMock();
+      service.connect('192.168.1.85', 3671);
+      jest.runAllTimers();
+      capturedHandlers.connected();
+
+      capturedHandlers.disconnected();
+      capturedHandlers.disconnected();
+      capturedHandlers.error('ECONNREFUSED');
+      capturedHandlers.error('ECONNREFUSED');
+
+      const offlineStatuses = io._events.filter((entry) =>
+        entry.event === 'knx_status' && entry.data.msg === 'Disconnected from bus'
+      );
+      const offlineErrors = io._events.filter((entry) =>
+        entry.event === 'knx_error' && entry.data.msg === 'Bus access failed: ECONNREFUSED. Check IP interface.'
+      );
+
+      expect(offlineStatuses).toHaveLength(1);
+      expect(offlineErrors).toHaveLength(1);
       jest.useRealTimers();
     });
 

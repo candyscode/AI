@@ -8,6 +8,7 @@ const path = require('path');
 const KnxService = require('./knxService');
 const HueService = require('./hueService');
 const { startScheduler, reloadScheduler, triggerSunRoutines } = require('./automationScheduler');
+const { createLogger } = require('./logger');
 const {
   getAllApartmentRooms,
   getAllSharedRooms,
@@ -34,6 +35,7 @@ app.use(bodyParser.json({ limit: '5mb' }));
 
 const CONFIG_FILE = path.join(__dirname, 'config.json');
 const apartmentContexts = new Map();
+const logger = createLogger('Server');
 
 let config = normalizeConfigShape({});
 
@@ -47,7 +49,7 @@ function loadConfig() {
     const data = fs.readFileSync(CONFIG_FILE, 'utf8');
     config = normalizeConfigShape(JSON.parse(data));
   } catch (error) {
-    console.error('Error parsing config.json', error);
+    logger.error('Failed to parse config.json', { error: error.message });
     config = normalizeConfigShape({});
   }
 }
@@ -96,7 +98,7 @@ function ensureApartmentContext(apartmentId) {
 
   const context = {
     apartmentId,
-    knxService: new KnxService(createApartmentEmitter(apartmentId)),
+    knxService: new KnxService(createApartmentEmitter(apartmentId), { label: apartmentId }),
     hueService: new HueService(),
     huePollingInterval: null,
     tracking: {
@@ -117,6 +119,7 @@ function syncApartmentContexts() {
 
   config.apartments.forEach((apartment) => {
     const context = ensureApartmentContext(apartment.id);
+    context.knxService.setLabel(apartment.slug || apartment.name || apartment.id);
     context.hueService.init(apartment.hue);
   });
 
@@ -127,7 +130,7 @@ function syncApartmentContexts() {
     try {
       context.knxService.connect('', 3671);
     } catch (error) {
-      console.error(`Failed to disconnect removed apartment ${apartmentId}:`, error.message);
+      logger.warn('Failed to disconnect removed apartment context', { apartmentId, error: error.message });
     }
     apartmentContexts.delete(apartmentId);
   }
@@ -375,7 +378,12 @@ async function handleSunTrigger(apartmentId, groupAddress, value) {
     const isDay = numericValue === apartment.sunTrigger.dayValue;
     const triggerType = isDay ? 'sunrise' : 'sunset';
     
-    console.log(`[SunTrigger] Detected ${triggerType} for apartment ${apartment.name} (GA: ${groupAddress}, Value: ${numericValue})`);
+    logger.info('Sun trigger detected', {
+      apartment: apartment.name,
+      trigger: triggerType,
+      ga: groupAddress,
+      value: numericValue,
+    });
     
     // Fire the routines for THIS apartment's configuration 
     // Wait, triggerSunRoutines iterates over ALL apartments because we pass config.
@@ -750,7 +758,7 @@ app.post('/api/dev/load-config', (req, res) => {
     emitAllStatuses();
     res.json({ success: true, config: buildPublicConfig(config) });
   } catch (error) {
-    console.error('Error parsing config.dev.json', error);
+    logger.error('Failed to parse config.dev.json', { error: error.message });
     res.status(500).json({ success: false, error: 'Internal Server Error reading dev config' });
   }
 });
@@ -780,7 +788,13 @@ app.post('/api/action', async (req, res) => {
 
     res.json({ success: true, message: 'Sent to bus' });
   } catch (error) {
-    console.error('Failed to execute action:', error.message);
+    logger.warn('Failed to execute action', {
+      apartmentId: actionContext.apartmentId,
+      scope,
+      ga: groupAddress,
+      type,
+      error: error.message,
+    });
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -993,14 +1007,13 @@ app.post('/api/hue/action', async (req, res) => {
 });
 
 io.on('connection', (socket) => {
-  console.log('Client connected to UI');
   emitAllStatuses(socket);
   socket.emit('knx_initial_states', buildStateSnapshot());
 });
 
 const distPath = path.join(__dirname, '../frontend/dist');
 if (fs.existsSync(distPath)) {
-  console.log(`Serving static frontend from ${distPath}`);
+  logger.info('Serving static frontend', { path: distPath });
   app.use(express.static(distPath));
   app.get(/.*/, (req, res) => {
     res.sendFile(path.join(distPath, 'index.html'));
@@ -1011,16 +1024,15 @@ const PORT = 3001;
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`\n❌ ERROR: Port ${PORT} is already in use.`);
-    console.error('This usually means the KNX Web App is already running in the background (e.g., via systemd or another terminal).');
-    console.error(`Stop the other instance (e.g., 'knx-stop' or 'pkill node') before starting a new one.\n`);
+    logger.error('Port already in use', { port: PORT });
+    logger.error('Another KNX Web App instance is likely already running');
     process.exit(1);
   } else {
-    console.error('\n❌ ERROR: Failed to start the server:', err.message);
+    logger.error('Failed to start server', { error: err.message });
     process.exit(1);
   }
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Backend server running on http://0.0.0.0:${PORT}`);
+  logger.info('Backend server running', { host: '0.0.0.0', port: PORT });
 });

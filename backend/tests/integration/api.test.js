@@ -9,7 +9,9 @@
  *  - We test every endpoint with Supertest
  */
 
-jest.mock('knx');
+jest.mock('knx', () => ({
+  Connection: jest.fn(),
+}));
 const knx = require('knx');
 
 // Make the KNX Connection mock always "connect" successfully
@@ -35,7 +37,9 @@ function buildApp(configPath) {
   // Patch the module cache so server.js picks up our config path
   process.env._TEST_CONFIG_FILE = configPath;
   jest.resetModules();
-  jest.mock('knx'); // re-apply after resetModules
+  jest.mock('knx', () => ({
+    Connection: jest.fn(),
+  })); // re-apply after resetModules
   const knxMod = require('knx');
   knxMod.Connection.mockImplementation(({ handlers }) => {
     setTimeout(() => handlers.connected(), 10);

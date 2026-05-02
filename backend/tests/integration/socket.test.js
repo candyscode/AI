@@ -4,7 +4,9 @@
  * Verifies that the server emits the correct events to connecting clients.
  */
 
-jest.mock('knx');
+jest.mock('knx', () => ({
+  Connection: jest.fn(),
+}));
 const knx = require('knx');
 knx.Connection.mockImplementation(({ handlers }) => {
   setTimeout(() => handlers.connected(), 10);
