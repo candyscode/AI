@@ -72,6 +72,15 @@ export const triggerAction = async (actionData) => {
   return res.json();
 };
 
+export const refreshKnxStatuses = async (apartmentId) => {
+  const res = await fetch(`${API_BASE}/knx/refresh-statuses`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apartmentId }),
+  });
+  return res.json();
+};
+
 export const discoverHueBridge = async (apartmentId) => {
   const res = await fetch(`${API_BASE}/hue/discover`, {
     method: 'POST',

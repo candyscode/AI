@@ -34,6 +34,7 @@ vi.mock('../configApi', () => ({
     }],
   }),
   verifyConfigPassword: vi.fn().mockResolvedValue({ success: true }),
+  refreshKnxStatuses: vi.fn().mockResolvedValue({ success: true }),
   setConfigPassword: vi.fn().mockResolvedValue({ success: true }),
   removeConfigPassword: vi.fn().mockResolvedValue({ success: true }),
   updateConfig: vi.fn().mockResolvedValue({ success: true }),

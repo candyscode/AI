@@ -55,7 +55,6 @@ export default function Connections({
   applyConfig,
   addToast,
   knxStatus,
-  sharedKnxStatus,
   hueStatus,
   navigateToApartment,
   configProtectionEnabled = false,
@@ -68,7 +67,6 @@ export default function Connections({
   const [port, setPort] = useState(config.knxPort || 3671);
   const [hueBridgeIp, setHueBridgeIp] = useState(config.hue?.bridgeIp || '');
   const [hueError, setHueError] = useState('');
-  const [sharedAccessApartmentId, setSharedAccessApartmentId] = useState(config.sharedAccessApartmentId || apartment.id);
   const [newApartmentName, setNewApartmentName] = useState('');
   const [configPasswordDraft, setConfigPasswordDraft] = useState('');
   const [configPasswordConfirmDraft, setConfigPasswordConfirmDraft] = useState('');
@@ -102,7 +100,6 @@ export default function Connections({
   );
   
   const [sunTriggerGa, setSunTriggerGa] = useState(config.sunTrigger?.groupAddress || '');
-  const [sunTriggerBus, setSunTriggerBus] = useState(config.sunTrigger?.bus || 'apartment');
   const [sunTriggerDayValue, setSunTriggerDayValue] = useState(config.sunTrigger?.dayValue ?? 1);
   const configImportInputRef = useRef(null);
 
@@ -112,13 +109,11 @@ export default function Connections({
     setIp(config.knxIp || '');
     setPort(config.knxPort || 3671);
     setHueBridgeIp(config.hue?.bridgeIp || '');
-    setSharedAccessApartmentId(config.sharedAccessApartmentId || apartment.id);
     setHouseGroupAddressBook(Array.isArray(config.importedGroupAddresses) ? config.importedGroupAddresses : []);
     setHouseGroupAddressFileName(config.importedGroupAddressesFileName || '');
     setConfigPasswordDraft('');
     setConfigPasswordConfirmDraft('');
     setSunTriggerGa(config.sunTrigger?.groupAddress || '');
-    setSunTriggerBus(config.sunTrigger?.bus || 'apartment');
     setSunTriggerDayValue(config.sunTrigger?.dayValue ?? 1);
   }, [apartment.id, config]);
 
@@ -135,21 +130,15 @@ export default function Connections({
     ip !== (config.knxIp || '') ||
     normalizedPort !== (config.knxPort || 3671) ||
     sunTriggerGa !== (config.sunTrigger?.groupAddress || '') ||
-    sunTriggerBus !== (config.sunTrigger?.bus || 'apartment') ||
     sunTriggerDayValue !== (config.sunTrigger?.dayValue ?? 1)
   );
-  const sharedSettingsDirty = sharedAccessApartmentId !== (config.sharedAccessApartmentId || apartment.id);
 
   const buildNextConfig = (overrides = {}) => ({
     ...fullConfig,
     building: {
       ...fullConfig.building,
-      sharedAccessApartmentId: overrides.sharedAccessApartmentId ?? sharedAccessApartmentId,
       importedGroupAddresses: overrides.houseGroupAddressBook ?? houseGroupAddressBook,
       importedGroupAddressesFileName: overrides.houseGroupAddressFileName ?? houseGroupAddressFileName,
-      sharedUsesApartmentImportedGroupAddresses: false,
-      sharedImportedGroupAddresses: overrides.houseGroupAddressBook ?? houseGroupAddressBook,
-      sharedImportedGroupAddressesFileName: overrides.houseGroupAddressFileName ?? houseGroupAddressFileName,
     },
     apartments: fullConfig.apartments.map((entry) => ({
       ...entry,
@@ -160,7 +149,6 @@ export default function Connections({
         knxPort: overrides.port ?? Number(port),
         sunTrigger: {
           groupAddress: overrides.sunTriggerGa ?? sunTriggerGa,
-          bus: overrides.sunTriggerBus ?? sunTriggerBus,
           dayValue: overrides.sunTriggerDayValue ?? sunTriggerDayValue,
         },
       } : {}),
@@ -175,7 +163,6 @@ export default function Connections({
     const nextIp = overrides.ip ?? ip;
     const nextPort = overrides.port ?? normalizedPort;
     const nextSunTriggerGa = overrides.sunTriggerGa ?? sunTriggerGa;
-    const nextSunTriggerBus = overrides.sunTriggerBus ?? sunTriggerBus;
     const nextSunTriggerDayValue = overrides.sunTriggerDayValue ?? sunTriggerDayValue;
 
     const hasChanges = (
@@ -184,7 +171,6 @@ export default function Connections({
       nextIp !== (config.knxIp || '') ||
       nextPort !== (config.knxPort || 3671) ||
       nextSunTriggerGa !== (config.sunTrigger?.groupAddress || '') ||
-      nextSunTriggerBus !== (config.sunTrigger?.bus || 'apartment') ||
       nextSunTriggerDayValue !== (config.sunTrigger?.dayValue ?? 1)
     );
 
@@ -199,31 +185,11 @@ export default function Connections({
         ip: nextIp,
         port: nextPort,
         sunTriggerGa: nextSunTriggerGa,
-        sunTriggerBus: nextSunTriggerBus,
         sunTriggerDayValue: nextSunTriggerDayValue,
       }));
       setApartmentSlug(uniqueSlug);
     } catch {
       addToast('Failed to save apartment settings', 'error');
-    }
-  };
-
-  const persistSharedSettings = async (overrides = {}) => {
-    const nextSharedAccessApartmentId = overrides.sharedAccessApartmentId ?? sharedAccessApartmentId;
-
-    if (
-      !sharedSettingsDirty &&
-      nextSharedAccessApartmentId === sharedAccessApartmentId
-    ) {
-      return;
-    }
-
-    try {
-      await persistConfig(buildNextConfig({
-        sharedAccessApartmentId: nextSharedAccessApartmentId,
-      }));
-    } catch {
-      addToast('Failed to save main line settings', 'error');
     }
   };
 
@@ -461,8 +427,6 @@ export default function Connections({
   const houseImportedCount = houseGroupAddressBook.length;
   const modalAddressBook = houseGroupAddressBook;
   const modalFileName = houseGroupAddressFileName;
-  const sharedAccessApartmentName = fullConfig.apartments.find((entry) => entry.id === sharedAccessApartmentId)?.name || apartment.name;
-  const sharedScopeContextCopy = `The app reaches the Main Line through ${sharedAccessApartmentName}.`;
   const sunTriggerMatchedAddressName = getImportedGroupAddressName(houseGroupAddressBook, sunTriggerGa);
 
   return (
@@ -477,7 +441,6 @@ export default function Connections({
         </div>
         <div className="page-hero-statuses">
           <StatusPill connected={knxStatus.connected} label={`${apartment.name} ${knxStatus.connected ? 'connected' : 'offline'}`} />
-          <StatusPill connected={sharedKnxStatus.connected} label={`Main Line via ${sharedAccessApartmentName} ${sharedKnxStatus.connected ? 'connected' : 'offline'}`} />
         </div>
       </div>
 
@@ -559,58 +522,20 @@ export default function Connections({
         <div className="connections-group-header">
           <div>
             <div className="connections-group-label">Whole House</div>
-            <h3 className="connections-group-title">Shared KNX Data & Main Line</h3>
+            <h3 className="connections-group-title">House-Wide KNX Data</h3>
             <p className="connections-group-copy">
-              Everything used across apartments lives here: how the app reaches the Main Line, the ETS export for the whole house, and the day/night trigger for sunrise and sunset routines.
+              Shared KNX addresses used across apartments live here, including the house ETS import and the day/night trigger for sunrise and sunset routines.
             </p>
           </div>
         </div>
 
         <div className="connections-card-grid connections-card-grid--shared">
           <SetupCard
-            icon={<Building2 size={20} />}
-            title="Main Line Access"
-            description="Choose which apartment gateway can receive KNX telegrams from the Main Line."
-            tone="knx-icon"
-          >
-            <div className="connections-grid">
-              <div className="settings-field">
-                <label className="settings-field-label">Use Gateway From Apartment</label>
-                <select
-                  className="form-select"
-                  value={sharedAccessApartmentId}
-                  onChange={async (event) => {
-                    const nextValue = event.target.value;
-                    setSharedAccessApartmentId(nextValue);
-                    await persistSharedSettings({ sharedAccessApartmentId: nextValue });
-                  }}
-                >
-                  {fullConfig.apartments.map((entry) => (
-                    <option key={entry.id} value={entry.id}>{entry.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <p className="connections-card-copy" style={{ marginTop: '0.9rem' }}>
-              {sharedScopeContextCopy}
-            </p>
-            <div className="connections-card-actions">
-              <StatusPill
-                connected={sharedKnxStatus.connected}
-                label={sharedKnxStatus.connected ? `Main Line via ${sharedAccessApartmentName} connected` : `Main Line via ${sharedAccessApartmentName} offline`}
-              />
-            </div>
-          </SetupCard>
-
-          <SetupCard
             icon={<FileText size={20} />}
             title="House ETS XML"
-            description="Upload one ETS export for the entire house, including all apartments and the Main Line."
+            description="Upload one ETS export for the entire house. It is used by every XML match and Browse dialog in the app."
             tone="ets-icon"
           >
-            <p className="connections-card-copy" style={{ marginBottom: '1rem' }}>
-              This XML is used for XML match hints and all Browse dialogs across the app.
-            </p>
             <div className="connections-card-actions">
               <button
                 className="btn-secondary"
@@ -643,25 +568,10 @@ export default function Connections({
           <SetupCard
             icon={<Sun size={20} />}
             title="Sunrise / Sunset Trigger"
-            description="Choose the KNX day/night status address that should trigger sunrise and sunset routines."
+            description="Choose the KNX day/night status address that should trigger sunrise and sunset routines for this apartment."
             tone="knx-icon"
           >
             <div className="connections-grid">
-              <div className="settings-field">
-                <label className="settings-field-label">Listen On</label>
-                <select
-                  className="form-input"
-                  value={sunTriggerBus}
-                  onChange={(e) => {
-                    const nextBus = e.target.value;
-                    setSunTriggerBus(nextBus);
-                    void commitApartmentSettings({ sunTriggerBus: nextBus });
-                  }}
-                >
-                  <option value="apartment">Apartment Line</option>
-                  <option value="main">Main Line</option>
-                </select>
-              </div>
               <div className="settings-field">
                 <label className="settings-field-label">Day / Night Group Address</label>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -682,7 +592,7 @@ export default function Connections({
                       mode: 'any',
                       dptFilter: '1.',
                       helperText: 'Select the Day/Night status address',
-                      scope: sunTriggerBus === 'main' ? 'shared' : 'apartment',
+                      scope: 'apartment',
                       targetField: 'sunTriggerGa'
                     })}
                   >

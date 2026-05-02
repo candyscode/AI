@@ -12,7 +12,7 @@ const {
   getAllApartmentRooms,
   getAllSharedRooms,
   getApartmentById,
-  getSharedAccessApartment,
+  getHouseWideInfoReadApartment,
   buildPublicConfig,
   normalizeArea,
   normalizeConfigShape,
@@ -68,17 +68,11 @@ function createApartmentEmitter(apartmentId) {
 
       if (event === 'knx_status') {
         io.emit('knx_status', { ...data, apartmentId, scope: 'apartment' });
-        if (config.building.sharedAccessApartmentId === apartmentId) {
-          io.emit('knx_status', { ...data, apartmentId, scope: 'shared' });
-        }
         return;
       }
 
       if (event === 'knx_error') {
         io.emit('knx_error', { ...data, apartmentId, scope: 'apartment' });
-        if (config.building.sharedAccessApartmentId === apartmentId) {
-          io.emit('knx_error', { ...data, apartmentId, scope: 'shared' });
-        }
         return;
       }
 
@@ -149,30 +143,29 @@ function getRoomsForSharedScope() {
 }
 
 function getRoomsForHuePolling(apartmentId) {
-  const rooms = [...getRoomsForApartmentScope(apartmentId)];
-  if (config.building.sharedAccessApartmentId === apartmentId) {
-    rooms.push(...getRoomsForSharedScope());
-  }
-  return rooms;
+  return [
+    ...getRoomsForApartmentScope(apartmentId),
+    ...getRoomsForSharedScope(),
+  ];
 }
 
 function buildKnxTrackingMaps(apartmentId) {
   const apartment = getApartmentById(config, apartmentId);
-  const sharedAccessApartment = getSharedAccessApartment(config);
-  const includeShared = sharedAccessApartment?.id === apartmentId;
-
-  const statusGAs = new Set();
   const gaToType = {};
   const gaToDpt = {};
   const apartmentGaSet = new Set();
   const sharedGaSet = new Set();
+  const apartmentStatusGAs = new Set();
+  const sharedInfoStatusGAs = new Set();
+  const sharedAreaStatusGAs = new Set();
 
   const registerRoomSet = (rooms, scope) => {
     const scopedSet = scope === 'shared' ? sharedGaSet : apartmentGaSet;
+    const statusSet = scope === 'shared' ? sharedAreaStatusGAs : apartmentStatusGAs;
 
     rooms.forEach((room) => {
       if (room.roomTemperatureGroupAddress) {
-        statusGAs.add(room.roomTemperatureGroupAddress);
+        statusSet.add(room.roomTemperatureGroupAddress);
         gaToType[room.roomTemperatureGroupAddress] = 'info';
         gaToDpt[room.roomTemperatureGroupAddress] = 'DPT9.001';
         scopedSet.add(room.roomTemperatureGroupAddress);
@@ -180,7 +173,7 @@ function buildKnxTrackingMaps(apartmentId) {
 
       (room.functions || []).forEach((func) => {
         if (func.statusGroupAddress) {
-          statusGAs.add(func.statusGroupAddress);
+          statusSet.add(func.statusGroupAddress);
           gaToType[func.statusGroupAddress] = func.type;
           scopedSet.add(func.statusGroupAddress);
         }
@@ -205,25 +198,56 @@ function buildKnxTrackingMaps(apartmentId) {
 
   (apartment?.alarms || []).forEach((alarm) => {
     if (!alarm?.statusGroupAddress) return;
-    statusGAs.add(alarm.statusGroupAddress);
+    apartmentStatusGAs.add(alarm.statusGroupAddress);
     gaToType[alarm.statusGroupAddress] = 'alarm';
     gaToDpt[alarm.statusGroupAddress] = alarm.dpt || 'DPT1.001';
     apartmentGaSet.add(alarm.statusGroupAddress);
   });
 
-  if (includeShared) {
-    (config.building.sharedInfos || []).forEach((info) => {
-      if (!info?.statusGroupAddress) return;
-      statusGAs.add(info.statusGroupAddress);
-      gaToType[info.statusGroupAddress] = 'info';
-      gaToDpt[info.statusGroupAddress] = info.dpt || 'DPT9.001';
-      sharedGaSet.add(info.statusGroupAddress);
-    });
+  (config.building.sharedInfos || []).forEach((info) => {
+    if (!info?.statusGroupAddress) return;
+    sharedInfoStatusGAs.add(info.statusGroupAddress);
+    gaToType[info.statusGroupAddress] = 'info';
+    gaToDpt[info.statusGroupAddress] = info.dpt || 'DPT9.001';
+    sharedGaSet.add(info.statusGroupAddress);
+  });
 
-    registerRoomSet(getRoomsForSharedScope(), 'shared');
-  }
+  registerRoomSet(getRoomsForSharedScope(), 'shared');
 
-  return { statusGAs, gaToType, gaToDpt, apartmentGaSet, sharedGaSet };
+  return {
+    statusGAs: new Set([...apartmentStatusGAs, ...sharedInfoStatusGAs, ...sharedAreaStatusGAs]),
+    gaToType,
+    gaToDpt,
+    apartmentGaSet,
+    sharedGaSet,
+    apartmentStatusGAs,
+    sharedInfoStatusGAs,
+    sharedAreaStatusGAs,
+  };
+}
+
+function shouldApartmentReadHouseWideInfos(apartmentId) {
+  return getHouseWideInfoReadApartment(config)?.id === apartmentId;
+}
+
+function requestTrackedStatusReads(apartmentId, {
+  includeApartment = true,
+  includeSharedInfos = false,
+  includeSharedAreas = true,
+} = {}) {
+  const context = apartmentContexts.get(apartmentId);
+  if (!context?.knxService?.isConnected) return;
+
+  const readOrder = [];
+  if (includeApartment) readOrder.push(...context.tracking.apartmentStatusGAs);
+  if (includeSharedAreas) readOrder.push(...context.tracking.sharedAreaStatusGAs);
+  if (includeSharedInfos) readOrder.push(...context.tracking.sharedInfoStatusGAs);
+
+  let delay = 0;
+  [...new Set(readOrder)].forEach((groupAddress) => {
+    setTimeout(() => context.knxService.readStatus(groupAddress), delay);
+    delay += 50;
+  });
 }
 
 function refreshKnxSubscriptions(apartmentId, { requestReads = false } = {}) {
@@ -239,11 +263,10 @@ function refreshKnxSubscriptions(apartmentId, { requestReads = false } = {}) {
   });
 
   if (!requestReads || !context.knxService.isConnected) return;
-
-  let delay = 0;
-  context.tracking.statusGAs.forEach((groupAddress) => {
-    setTimeout(() => context.knxService.readStatus(groupAddress), delay);
-    delay += 50;
+  requestTrackedStatusReads(apartmentId, {
+    includeApartment: true,
+    includeSharedAreas: true,
+    includeSharedInfos: shouldApartmentReadHouseWideInfos(apartmentId),
   });
 }
 
@@ -287,13 +310,11 @@ function startHuePolling(apartmentId) {
       });
     });
 
-    if (config.building.sharedAccessApartmentId === apartmentId) {
-      getRoomsForSharedScope().forEach((room) => {
-        (room.functions || []).forEach((func) => {
-          if (func.type === 'hue' && func.hueLightId) sharedHueIds.add(func.hueLightId);
-        });
+    getRoomsForSharedScope().forEach((room) => {
+      (room.functions || []).forEach((func) => {
+        if (func.type === 'hue' && func.hueLightId) sharedHueIds.add(func.hueLightId);
       });
-    }
+    });
 
     const apartmentStates = await context.hueService.getLightStates([...privateHueIds]);
     if (Object.keys(apartmentStates).length > 0) {
@@ -338,17 +359,6 @@ function emitAllStatuses(socket) {
     });
   });
 
-  const sharedAccessApartment = getSharedAccessApartment(config);
-  if (sharedAccessApartment) {
-    const context = apartmentContexts.get(sharedAccessApartment.id);
-    emitter.emit('knx_status', getKnxStatusPayload(sharedAccessApartment.id, 'shared'));
-    emitter.emit('hue_status', {
-      apartmentId: sharedAccessApartment.id,
-      scope: 'shared',
-      paired: !!context?.hueService?.isPaired,
-      bridgeIp: context?.hueService?.bridgeIp || '',
-    });
-  }
 }
 
 async function handleSunTrigger(apartmentId, groupAddress, value) {
@@ -361,11 +371,6 @@ async function handleSunTrigger(apartmentId, groupAddress, value) {
     // Check if the GA matches
     if (apartment.sunTrigger.groupAddress !== groupAddress) continue;
     
-    // Check if the event came from the correct bus
-    const isSharedGa = apartmentContexts.get(apartmentId)?.tracking?.sharedGaSet?.has(groupAddress);
-    const busSource = isSharedGa ? 'main' : 'apartment';
-    if (apartment.sunTrigger.bus !== busSource) continue;
-
     // Check if it's a sunrise or sunset
     const isDay = numericValue === apartment.sunTrigger.dayValue;
     const triggerType = isDay ? 'sunrise' : 'sunset';
@@ -395,11 +400,12 @@ function buildStateSnapshot() {
   });
 
   const sharedStates = {};
-  const sharedAccessApartment = getSharedAccessApartment(config);
-  const sharedContext = sharedAccessApartment ? apartmentContexts.get(sharedAccessApartment.id) : null;
-  Object.entries(sharedContext?.knxService?.deviceStates || {}).forEach(([groupAddress, value]) => {
-    if (!sharedContext?.tracking?.sharedGaSet?.has(groupAddress)) return;
-    sharedStates[groupAddress] = value;
+  config.apartments.forEach((apartment) => {
+    const context = apartmentContexts.get(apartment.id);
+    Object.entries(context?.knxService?.deviceStates || {}).forEach(([groupAddress, value]) => {
+      if (!context?.tracking?.sharedGaSet?.has(groupAddress)) return;
+      sharedStates[groupAddress] = value;
+    });
   });
 
   return { apartments, shared: sharedStates };
@@ -440,35 +446,8 @@ function applyConfigPatch(payload) {
           : '';
     }
 
-    if (payload.sharedImportedGroupAddresses !== undefined || payload.importedGroupAddresses !== undefined) {
-      config.building.sharedImportedGroupAddresses = normalizeImportedGroupAddresses(
-        payload.sharedImportedGroupAddresses !== undefined
-          ? payload.sharedImportedGroupAddresses
-          : payload.importedGroupAddresses
-      );
-    }
-
-    if (payload.sharedImportedGroupAddressesFileName !== undefined || payload.importedGroupAddressesFileName !== undefined) {
-      config.building.sharedImportedGroupAddressesFileName =
-        typeof (payload.sharedImportedGroupAddressesFileName !== undefined
-          ? payload.sharedImportedGroupAddressesFileName
-          : payload.importedGroupAddressesFileName) === 'string'
-          ? (payload.sharedImportedGroupAddressesFileName !== undefined
-            ? payload.sharedImportedGroupAddressesFileName
-            : payload.importedGroupAddressesFileName)
-          : '';
-    }
-
-    if (payload.sharedUsesApartmentImportedGroupAddresses !== undefined) {
-      config.building.sharedUsesApartmentImportedGroupAddresses = payload.sharedUsesApartmentImportedGroupAddresses === true;
-      if (config.building.sharedUsesApartmentImportedGroupAddresses) {
-        config.building.sharedImportedGroupAddresses = [];
-        config.building.sharedImportedGroupAddressesFileName = '';
-      }
-    }
-
-    if (payload.sharedAccessApartmentId !== undefined && getApartmentById(config, payload.sharedAccessApartmentId)) {
-      config.building.sharedAccessApartmentId = payload.sharedAccessApartmentId;
+    if (payload.houseWideInfoReadApartmentId !== undefined && getApartmentById(config, payload.houseWideInfoReadApartmentId)) {
+      config.building.houseWideInfoReadApartmentId = payload.houseWideInfoReadApartmentId;
     }
 
     return;
@@ -542,15 +521,10 @@ function applyConfigPatch(payload) {
   }
 
   if (payload.importedGroupAddresses !== undefined) {
-    apartment.importedGroupAddresses = normalizeImportedGroupAddresses(payload.importedGroupAddresses);
     config.building.importedGroupAddresses = normalizeImportedGroupAddresses(payload.importedGroupAddresses);
   }
 
   if (payload.importedGroupAddressesFileName !== undefined) {
-    apartment.importedGroupAddressesFileName =
-      typeof payload.importedGroupAddressesFileName === 'string'
-        ? payload.importedGroupAddressesFileName
-        : '';
     config.building.importedGroupAddressesFileName =
       typeof payload.importedGroupAddressesFileName === 'string'
         ? payload.importedGroupAddressesFileName
@@ -576,20 +550,10 @@ function findScene(sceneId, apartmentId, scope = 'apartment') {
 }
 
 function getActionContext(apartmentId, scope = 'apartment') {
-  if (scope === 'shared') {
-    const sharedAccessApartment = getSharedAccessApartment(config);
-    if (!sharedAccessApartment) return null;
-    return {
-      apartmentId: sharedAccessApartment.id,
-      scope: 'shared',
-      context: apartmentContexts.get(sharedAccessApartment.id),
-    };
-  }
-
   const resolvedApartmentId = apartmentId || config.apartments[0]?.id;
   return {
     apartmentId: resolvedApartmentId,
-    scope: 'apartment',
+    scope,
     context: apartmentContexts.get(resolvedApartmentId),
   };
 }
@@ -821,6 +785,23 @@ app.post('/api/action', async (req, res) => {
   }
 });
 
+app.post('/api/knx/refresh-statuses', (req, res) => {
+  const apartmentId = req.body?.apartmentId || config.apartments[0]?.id;
+  const context = apartmentContexts.get(apartmentId);
+  if (!context) {
+    res.status(404).json({ success: false, error: 'Apartment not found' });
+    return;
+  }
+
+  requestTrackedStatusReads(apartmentId, {
+    includeApartment: true,
+    includeSharedAreas: true,
+    includeSharedInfos: shouldApartmentReadHouseWideInfos(apartmentId),
+  });
+
+  res.json({ success: true });
+});
+
 app.post('/api/hue/discover', async (req, res) => {
   const apartmentId = req.body?.apartmentId || req.query?.apartmentId || config.apartments[0]?.id;
   const context = apartmentContexts.get(apartmentId);
@@ -858,9 +839,6 @@ app.post('/api/hue/pair', async (req, res) => {
     saveConfig();
     startHuePolling(apartment.id);
     io.emit('hue_status', { apartmentId: apartment.id, scope: 'apartment', paired: true, bridgeIp });
-    if (config.building.sharedAccessApartmentId === apartment.id) {
-      io.emit('hue_status', { apartmentId: apartment.id, scope: 'shared', paired: true, bridgeIp });
-    }
   }
   res.json(result);
 });
@@ -879,9 +857,6 @@ app.post('/api/hue/unpair', (req, res) => {
   saveConfig();
   stopHuePolling(apartment.id);
   io.emit('hue_status', { apartmentId: apartment.id, scope: 'apartment', paired: false, bridgeIp: '' });
-  if (config.building.sharedAccessApartmentId === apartment.id) {
-    io.emit('hue_status', { apartmentId: apartment.id, scope: 'shared', paired: false, bridgeIp: '' });
-  }
   res.json({ success: true });
 });
 

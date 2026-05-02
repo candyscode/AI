@@ -57,13 +57,14 @@ describe('appModel migration and view building', () => {
       knxIp: '192.168.1.10',
     }));
     expect(migrated.building.importedGroupAddressesFileName).toBe('legacy.xml');
+    expect(migrated.building.houseWideInfoReadApartmentId).toBe('apartment_1');
   });
 
   it('builds the merged apartment view with private and shared areas ordered by areaOrder', () => {
     const config = {
       version: 2,
       building: {
-        sharedAccessApartmentId: 'apartment_1',
+        houseWideInfoReadApartmentId: 'apartment_1',
         sharedInfos: [{ id: 'info-1', name: 'Outside Temperature', type: 'info', category: 'temperature' }],
         sharedAreas: [{ id: 'shared-garden', name: 'Garden', rooms: [] }],
         importedGroupAddresses: [{ address: '1/6/3', name: 'Outside Temperature', supported: true }],
@@ -83,7 +84,7 @@ describe('appModel migration and view building', () => {
           ],
           areaOrder: ['shared-garden', 'private-sleeping', 'private-living'],
           alarms: [{ id: 'alarm-1', name: 'Rain Alarm', type: 'alarm', category: 'alarm' }],
-          sunTrigger: { groupAddress: '1/6/0', bus: 'main', dayValue: 1 },
+          sunTrigger: { groupAddress: '1/6/0', dayValue: 1 },
           importedGroupAddresses: [],
           importedGroupAddressesFileName: '',
         },
@@ -105,26 +106,23 @@ describe('appModel migration and view building', () => {
       expect.objectContaining({ address: '1/6/3', name: 'Outside Temperature' }),
     ]);
     expect(view.apartmentConfig.importedGroupAddressesFileName).toBe('house.xml');
-    expect(view.apartmentConfig.sharedUsesApartmentImportedGroupAddresses).toBe(false);
     expect(view.apartmentConfig.alarms).toEqual([
       expect.objectContaining({ name: 'Rain Alarm' }),
     ]);
     expect(view.apartmentConfig.sunTrigger).toEqual({
       groupAddress: '1/6/0',
-      bus: 'main',
       dayValue: 1,
     });
+    expect(view.apartmentConfig.houseWideInfoReadApartmentId).toBe('apartment_1');
   });
 
   it('normalizes legacy rooms without scenes/functions arrays in the apartment view', () => {
     const config = {
       version: 2,
       building: {
-        sharedAccessApartmentId: 'apartment_1',
+        houseWideInfoReadApartmentId: 'apartment_1',
         sharedInfos: [],
         sharedAreas: [{ id: 'shared-garden', name: 'Garden', rooms: [{ id: 'shared-room', name: 'Shared Room' }] }],
-        sharedImportedGroupAddresses: [],
-        sharedImportedGroupAddressesFileName: '',
       },
       apartments: [
         {
