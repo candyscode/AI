@@ -10,6 +10,20 @@
  * They may be slightly slower than pure unit tests.
  */
 
+jest.mock('log-driver', () => {
+  const createLogger = () => ({
+    trace() {},
+    debug() {},
+    info() {},
+    warn() {},
+    error() {},
+  });
+
+  const factory = () => createLogger();
+  factory.logger = createLogger();
+  return factory;
+});
+
 const http       = require('http');
 const express    = require('express');
 const { Server } = require('socket.io');
