@@ -1,4 +1,5 @@
 'use strict';
+const { createLogger } = require('./logger');
 
 /**
  * Automation Scheduler
@@ -35,6 +36,7 @@ let tickerHandle = null;
 let getConfigFn = null;
 let executeActionFn = null;
 let persistStatusFn = null;
+const logger = createLogger('Scheduler');
 
 /**
  * Execute a single automation routine for a given apartment.
@@ -43,7 +45,7 @@ let persistStatusFn = null;
  * @param {object} allFloors - Combined private + shared floors for action resolution
  */
 async function runAutomation(apartment, automation, allFloors) {
-  console.log(`[Scheduler] Running routine "${automation.name}" for apartment "${apartment.name}"`);
+  logger.info('Running automation', { routine: automation.name, apartment: apartment.name });
   const results = [];
 
   for (const action of automation.actions) {
@@ -51,7 +53,7 @@ async function runAutomation(apartment, automation, allFloors) {
       await executeActionFn(apartment, action, allFloors);
       results.push({ id: action.id, ok: true });
     } catch (err) {
-      console.error(`[Scheduler] Action ${action.id} failed:`, err.message);
+      logger.warn('Automation action failed', { routine: automation.name, actionId: action.id, error: err.message });
       results.push({ id: action.id, ok: false, error: err.message });
     }
     await sleep(600); // 600ms gap between actions
@@ -65,11 +67,11 @@ async function runAutomation(apartment, automation, allFloors) {
     try {
       await persistStatusFn(apartment.id, automation.id, { lastRunAt: runAt, lastRunStatus: status });
     } catch (err) {
-      console.error(`[Scheduler] Failed to persist run status for "${automation.name}":`, err.message);
+      logger.error('Failed to persist automation status', { routine: automation.name, apartment: apartment.name, error: err.message });
     }
   }
 
-  console.log(`[Scheduler] Routine "${automation.name}" finished — status: ${status}`);
+  logger.info('Automation finished', { routine: automation.name, apartment: apartment.name, status });
 }
 
 async function tick() {
@@ -105,7 +107,7 @@ async function tick() {
 
       // Fire async, don't await so we don't block subsequent routines
       runAutomation(apartment, automation, allFloors).catch((err) => {
-        console.error(`[Scheduler] Unhandled error in routine "${automation.name}":`, err);
+        logger.error('Unhandled automation error', { routine: automation.name, apartment: apartment.name, error: err.message });
       });
     }
   }
@@ -132,9 +134,10 @@ function startScheduler(getConfig, executeAction, persistStatus) {
   persistStatusFn = persistStatus;
 
   if (tickerHandle) clearInterval(tickerHandle);
-  tickerHandle = setInterval(() => { tick().catch(console.error); }, 60 * 1000);
-
-  console.log('[Scheduler] Automation scheduler started (60s interval)');
+  tickerHandle = setInterval(() => {
+    tick().catch((err) => logger.error('Scheduler tick failed', { error: err.message }));
+  }, 60 * 1000);
+  logger.info('Automation scheduler started', { intervalSeconds: 60 });
 }
 
 /**
@@ -143,8 +146,10 @@ function startScheduler(getConfig, executeAction, persistStatus) {
 function reloadScheduler() {
   if (!getConfigFn || !executeActionFn) return;
   if (tickerHandle) clearInterval(tickerHandle);
-  tickerHandle = setInterval(() => { tick().catch(console.error); }, 60 * 1000);
-  console.log('[Scheduler] Automation scheduler reloaded');
+  tickerHandle = setInterval(() => {
+    tick().catch((err) => logger.error('Scheduler tick failed', { error: err.message }));
+  }, 60 * 1000);
+  logger.debug('Automation scheduler reloaded');
 }
 
 /**
@@ -179,10 +184,10 @@ async function triggerSunRoutines(config, triggerType, firingApartmentId) {
       if (lastFiredMinute.has(key)) continue;
       lastFiredMinute.set(key, true);
 
-      console.log(`[Scheduler] Sun trigger (${triggerType}) firing routine "${automation.name}" for "${apartment.name}"`);
+      logger.info('Sun trigger firing automation', { trigger: triggerType, routine: automation.name, apartment: apartment.name });
 
       runAutomation(apartment, automation, allFloors).catch((err) => {
-        console.error(`[Scheduler] Sun routine "${automation.name}" failed:`, err);
+        logger.error('Unhandled sun-trigger automation error', { routine: automation.name, apartment: apartment.name, error: err.message });
       });
     }
   }
