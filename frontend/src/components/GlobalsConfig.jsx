@@ -5,8 +5,11 @@ function ItemSection({
   title,
   items,
   type,
+  apartments,
+  houseWideInfoReadApartmentId,
   setItems,
   saveItems,
+  saveHouseWideInfoReadApartment,
   openGroupAddressModal,
   emptyText,
   resolveGroupAddressName,
@@ -26,6 +29,19 @@ function ItemSection({
     if (category === 'wind') return <Wind size={18} style={{ color: '#0ea5e9' }} />;
     if (category === 'lux') return <Sun size={18} style={{ color: '#eab308' }} />;
     return <Info size={18} />;
+  };
+
+  const gaBrowseConfig = {
+    info: {
+      title: 'Select House-Wide Information Group Address',
+      dptFilter: '9.',
+      helperText: 'Select a compatible house-wide information GA matching DPT 9.x.',
+    },
+    alarm: {
+      title: 'Select Alarm Group Address',
+      dptFilter: '1.',
+      helperText: 'Select a compatible alarm GA matching DPT 1.x.',
+    },
   };
 
   const handleAdd = async () => {
@@ -52,7 +68,7 @@ function ItemSection({
 
   const handleDelete = async (id) => {
     const confirmed = await requestConfirm?.({
-      title: type === 'alarm' ? 'Delete Alarm' : 'Delete Central Information',
+      title: type === 'alarm' ? 'Delete Alarm' : 'Delete House-Wide Information',
       message: 'Delete this item?',
       confirmLabel: 'Delete',
       danger: true,
@@ -88,12 +104,29 @@ function ItemSection({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
         <h4 style={{ margin: 0 }}>{title}</h4>
-        <button className="btn-secondary" onClick={() => setAdding(true)}>
-          <Plus size={16} /> {type === 'alarm' ? 'Add Alarm' : 'Add Central Information'}
-        </button>
       </div>
+
+      {type === 'info' && (
+        <div className="settings-field" style={{ maxWidth: '320px' }}>
+          <label className="settings-field-label" htmlFor="house-wide-info-read-apartment">
+            Read Values Using Apartment Gateway
+          </label>
+          <select
+            id="house-wide-info-read-apartment"
+            className="form-select"
+            value={houseWideInfoReadApartmentId || apartments?.[0]?.id || ''}
+            onChange={(event) => {
+              void saveHouseWideInfoReadApartment?.(event.target.value);
+            }}
+          >
+            {(apartments || []).map((entry) => (
+              <option key={entry.id} value={entry.id}>{entry.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {items.length === 0 && !adding && (
         <div style={{ background: 'var(--glass-bg)', padding: '1.25rem', borderRadius: '12px', color: 'var(--text-secondary)' }}>
@@ -127,9 +160,9 @@ function ItemSection({
           </div>
 
           {type === 'info' && (
-            <div className="settings-field" style={{ width: '240px', minWidth: '240px' }}>
-              <label className="settings-field-label">Category</label>
-              <select
+          <div className="settings-field" style={{ width: '240px', minWidth: '240px' }}>
+            <label className="settings-field-label">Category</label>
+            <select
                 className="form-select"
                 value={item.category}
                 onChange={(event) => updateAndCommitItem(item.id, 'category', event.target.value)}
@@ -141,9 +174,9 @@ function ItemSection({
             </div>
           )}
 
-          <div className="settings-field" style={{ flex: 1, minWidth: '180px' }}>
+          <div className="settings-field ga-field" style={{ flex: 1, minWidth: '180px' }}>
             <label className="settings-field-label">Group Address</label>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <div className="ga-field-input-row">
               <input
                 className="form-input"
                 value={item.statusGroupAddress || ''}
@@ -153,16 +186,14 @@ function ItemSection({
               />
               <button
                 type="button"
-                className="btn-secondary-sm"
+                className="btn-secondary-sm ga-browse-btn"
                 onClick={() => openGroupAddressModal({
-                  title: type === 'alarm' ? 'Select Alarm Group Address' : 'Select Central Information Group Address',
+                  title: gaBrowseConfig[type].title,
                   mode: 'any',
-                  dptFilter: type === 'alarm' ? '1.' : '9.',
+                  dptFilter: gaBrowseConfig[type].dptFilter,
                   target: { kind: type === 'alarm' ? 'alarm' : 'sharedInfo', id: item.id },
                   allowUpload: false,
-                  helperText: type === 'alarm'
-                    ? 'Select a compatible alarm GA matching DPT 1.x.'
-                    : 'Select a compatible central information GA matching DPT 9.x.',
+                  helperText: gaBrowseConfig[type].helperText,
                   scope: type === 'alarm' ? 'apartment' : 'shared',
                 })}
                 title="Browse ETS addresses"
@@ -182,29 +213,70 @@ function ItemSection({
       {adding && (
         <div style={{ background: 'var(--glass-bg)', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
           <h4 style={{ margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {type === 'alarm' ? <><AlertTriangle size={16} /> New Alarm</> : <><Info size={16} /> New Central Information</>}
+            {type === 'alarm' ? <><AlertTriangle size={16} /> New Alarm</> : <><Info size={16} /> New House-Wide Information</>}
           </h4>
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-            <input
-              className="form-input"
-              value={draft.name}
-              onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-              placeholder={type === 'alarm' ? 'Name (e.g. Rain Alarm)' : 'Name (e.g. Outside Temperature)'}
-              style={{ flex: 1, minWidth: '220px' }}
-              autoFocus
-            />
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <div className="settings-field" style={{ flex: 1, minWidth: '220px' }}>
+              <label className="settings-field-label">Name</label>
+              <input
+                className="form-input"
+                value={draft.name}
+                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                placeholder={type === 'alarm' ? 'e.g. Rain Alarm' : 'e.g. Outside Temperature'}
+                autoFocus
+              />
+            </div>
             {type === 'info' && (
-              <select
-                className="form-select"
-                value={draft.category}
-                onChange={(event) => setDraft({ ...draft, category: event.target.value })}
-                style={{ width: '240px', minWidth: '240px' }}
-              >
-                <option value="temperature">Temperature (°C)</option>
-                <option value="wind">Wind (m/s)</option>
-                <option value="lux">Brightness (Lux)</option>
-              </select>
+              <div className="settings-field" style={{ width: '240px', minWidth: '240px' }}>
+                <label className="settings-field-label">Category</label>
+                <select
+                  className="form-select"
+                  value={draft.category}
+                  onChange={(event) => setDraft({ ...draft, category: event.target.value })}
+                >
+                  <option value="temperature">Temperature (°C)</option>
+                  <option value="wind">Wind (m/s)</option>
+                  <option value="lux">Brightness (Lux)</option>
+                </select>
+              </div>
             )}
+            <div className="settings-field ga-field" style={{ flex: 1, minWidth: '280px' }}>
+              <label className="settings-field-label">Group Address</label>
+              <div className="ga-field-input-row">
+                <input
+                  className="form-input"
+                  value={draft.statusGroupAddress}
+                  onChange={(event) => setDraft({ ...draft, statusGroupAddress: event.target.value })}
+                  placeholder="e.g. 1/1/1"
+                />
+                <button
+                  type="button"
+                  className="btn-secondary-sm ga-browse-btn"
+                  onClick={() => openGroupAddressModal({
+                    title: gaBrowseConfig[type].title,
+                    mode: 'any',
+                    dptFilter: gaBrowseConfig[type].dptFilter,
+                    allowUpload: false,
+                    helperText: gaBrowseConfig[type].helperText,
+                    scope: type === 'alarm' ? 'apartment' : 'shared',
+                    onSelect: (groupAddress) => {
+                      setDraft((prev) => ({
+                        ...prev,
+                        statusGroupAddress: groupAddress.address,
+                      }));
+                    },
+                  })}
+                  title="Browse ETS addresses"
+                >
+                  Browse
+                </button>
+              </div>
+              {resolveGroupAddressName?.(draft.statusGroupAddress || '', type) && (
+                <div style={{ marginTop: '0.4rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                  XML match: <strong style={{ color: 'var(--text-primary)' }}>{resolveGroupAddressName(draft.statusGroupAddress || '', type)}</strong>
+                </div>
+              )}
+            </div>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
             <button className="btn-primary" onClick={handleAdd} disabled={!draft.name.trim()}>
@@ -216,17 +288,28 @@ function ItemSection({
           </div>
         </div>
       )}
+
+      {!adding && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button className="btn-secondary" onClick={() => setAdding(true)}>
+            <Plus size={16} /> {type === 'alarm' ? 'Add Alarm' : 'Add House-Wide Information'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 export default function GlobalsConfig({
+  apartments,
   sharedInfos,
   apartmentAlarms,
+  houseWideInfoReadApartmentId,
   setSharedInfos,
   setApartmentAlarms,
   saveSharedInfos,
   saveApartmentAlarms,
+  saveHouseWideInfoReadApartment,
   openGroupAddressModal,
   requestConfirm,
   resolveGroupAddressName,
@@ -234,14 +317,18 @@ export default function GlobalsConfig({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <ItemSection
-        title="Central Information"
+        title="House-Wide Information"
         items={sharedInfos}
         type="info"
+        apartments={apartments}
+        houseWideInfoReadApartmentId={houseWideInfoReadApartmentId}
         setItems={setSharedInfos}
         saveItems={saveSharedInfos}
+        saveHouseWideInfoReadApartment={saveHouseWideInfoReadApartment}
         openGroupAddressModal={openGroupAddressModal}
-        emptyText="No central information configured yet."
+        emptyText="No house-wide information configured yet."
         resolveGroupAddressName={resolveGroupAddressName}
+        requestConfirm={requestConfirm}
       />
 
       <ItemSection
@@ -253,6 +340,7 @@ export default function GlobalsConfig({
         openGroupAddressModal={openGroupAddressModal}
         emptyText="No apartment-specific alarms configured yet."
         resolveGroupAddressName={resolveGroupAddressName}
+        requestConfirm={requestConfirm}
       />
     </div>
   );

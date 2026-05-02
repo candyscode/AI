@@ -48,7 +48,7 @@ const hasTextContent = (matcher) => (_, node) => matcher.test(node?.textContent 
 const FULL_CONFIG = {
   version: 2,
   building: {
-    sharedAccessApartmentId: 'apartment_1',
+    houseWideInfoReadApartmentId: 'apartment_1',
     sharedInfos: [{ id: 'info-1', name: 'Outside Temperature', type: 'info', category: 'temperature' }],
     sharedAreas: [{ id: 'shared-garden', name: 'Garden', rooms: [] }],
     importedGroupAddresses: [{ address: '1/7/1', name: 'Garden Weather', supported: true }],
@@ -96,7 +96,6 @@ function renderConnections(fullConfig = FULL_CONFIG, apartmentSlug = 'wohnung-os
       applyConfig={applyConfig}
       addToast={addToast}
       knxStatus={{ connected: true, msg: 'ok' }}
-      sharedKnxStatus={{ connected: false, msg: 'offline' }}
       hueStatus={{ paired: false, bridgeIp: '' }}
       navigateToApartment={navigateToApartment}
       configProtectionEnabled={fullConfig.building?.configProtectionEnabled === true}
@@ -136,24 +135,21 @@ afterEach(() => {
 });
 
 describe('Connections — multi-apartment setup grouping', () => {
-  it('renders the setup page with apartment, main line, and management groups', () => {
+  it('renders the setup page with apartment, house-wide, and management groups', () => {
     renderConnections();
 
     expect(screen.getByText('Building Setup')).toBeInTheDocument();
     expect(screen.getByText('This Apartment')).toBeInTheDocument();
-    expect(screen.getByText('Shared KNX Data & Main Line')).toBeInTheDocument();
+    expect(screen.getByText('House-Wide KNX Data')).toBeInTheDocument();
     expect(screen.getByText('Apartment List')).toBeInTheDocument();
-    expect(screen.getAllByText(/Main Line via Wohnung Ost offline/i).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /save apartment/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /save shared setup/i })).not.toBeInTheDocument();
   });
 
-  it('makes clear that main line ETS setup is building-wide even when another apartment is selected', () => {
+  it('makes clear that the house ETS setup is building-wide even when another apartment is selected', () => {
     renderConnections(FULL_CONFIG, 'wohnung-west');
 
-    expect(screen.getByText(/upload one ets export for the entire house, including all apartments and the main line/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/the app reaches the main line through wohnung ost/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/this xml is used for xml match hints and all browse dialogs across the app/i)).toBeInTheDocument();
+    expect(screen.getByText(/upload one ets export for the entire house/i)).toBeInTheDocument();
+    expect(screen.getByText(/it is used by every xml match and browse dialog in the app/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /manage house ets xml/i })).toBeInTheDocument();
   });
 });
@@ -212,7 +208,6 @@ describe('Connections — apartment-specific persistence', () => {
     await waitFor(() => {
       expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
         building: expect.objectContaining({
-          sharedAccessApartmentId: 'apartment_1',
           importedGroupAddressesFileName: 'house.xml',
         }),
         apartments: expect.arrayContaining([
@@ -234,13 +229,11 @@ describe('Connections — apartment-specific persistence', () => {
     expect(addToast).not.toHaveBeenCalledWith('Apartment settings saved', 'success');
   });
 
-  it('persists the sun trigger GA and bus selection without resetting them', async () => {
+  it('persists the sun trigger group address without resetting it', async () => {
     const user = userEvent.setup();
     renderConnections();
 
     const sunTriggerCard = screen.getByText('Sunrise / Sunset Trigger').closest('section');
-    const [busSelect] = within(sunTriggerCard).getAllByRole('combobox');
-    await user.selectOptions(busSelect, 'main');
     const gaInput = within(sunTriggerCard).getByPlaceholderText('e.g. 7/0/0');
     await user.clear(gaInput);
     await user.type(gaInput, '1/6/0');
@@ -253,7 +246,6 @@ describe('Connections — apartment-specific persistence', () => {
             id: 'apartment_1',
             sunTrigger: expect.objectContaining({
               groupAddress: '1/6/0',
-              bus: 'main',
               dayValue: 1,
             }),
           }),
@@ -262,14 +254,11 @@ describe('Connections — apartment-specific persistence', () => {
     });
   });
 
-  it('shows the XML match for the sun trigger group address from the selected XML scope', async () => {
+  it('shows the XML match for the sun trigger group address from the house ETS XML', async () => {
     const user = userEvent.setup();
     renderConnections();
 
     const sunTriggerCard = screen.getByText('Sunrise / Sunset Trigger').closest('section');
-    const [busSelect] = within(sunTriggerCard).getAllByRole('combobox');
-    await user.selectOptions(busSelect, 'main');
-
     const gaInput = within(sunTriggerCard).getByPlaceholderText('e.g. 7/0/0');
     await user.clear(gaInput);
     await user.type(gaInput, '1/7/1');
@@ -338,27 +327,11 @@ describe('Connections — apartment-specific persistence', () => {
   });
 });
 
-describe('Connections — main line setup', () => {
-  it('auto-saves which apartment provides main line KNX access', async () => {
-    const user = userEvent.setup();
-    renderConnections();
-
-    const accessCard = screen.getByText('Main Line Access').closest('section');
-    await user.selectOptions(within(accessCard).getByRole('combobox'), 'apartment_2');
-
-    await waitFor(() => {
-      expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
-        building: expect.objectContaining({
-          sharedAccessApartmentId: 'apartment_2',
-        }),
-      }));
-    });
-    expect(addToast).not.toHaveBeenCalledWith('Main line settings saved', 'success');
-  });
-
-  it('keeps the house ETS card editable when another apartment provides main line access', () => {
+describe('Connections — house-wide KNX setup', () => {
+  it('does not show a separate main line access card anymore', () => {
     renderConnections(FULL_CONFIG, 'wohnung-west');
 
+    expect(screen.queryByText('Main Line Access')).not.toBeInTheDocument();
     expect(screen.getByText(/house\.xml/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /manage house ets xml/i })).toBeInTheDocument();
   });
@@ -421,7 +394,7 @@ describe('Connections — full config backup', () => {
     const importedConfig = {
       version: 2,
       building: {
-        sharedAccessApartmentId: 'apartment_99',
+        houseWideInfoReadApartmentId: 'apartment_99',
         sharedInfos: [],
         sharedAreas: [],
         importedGroupAddresses: [],

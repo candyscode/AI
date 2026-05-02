@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Settings, { moveRoomBetweenFloors, reorderRoomsWithinFloor } from '../Settings';
 import * as api from '../configApi';
@@ -479,14 +479,41 @@ describe('Settings — custom confirmations', () => {
   });
 });
 
-describe('Settings — central information and apartment alarms', () => {
-  it('stores new central information in the building scope only', async () => {
+describe('Settings — house-wide information and apartment alarms', () => {
+  it('shows the updated information and alert panel heading', async () => {
     const user = userEvent.setup();
     renderSettings();
 
-    await user.click(screen.getByRole('button', { name: /global info & alarms/i }));
-    await user.click(screen.getByRole('button', { name: /add central information/i }));
-    await user.type(screen.getByPlaceholderText('Name (e.g. Outside Temperature)'), 'Wind');
+    await user.click(screen.getByRole('button', { name: /house-wide info & alarms/i }));
+
+    expect(screen.getByText('Configure information & alert panel')).toBeInTheDocument();
+  });
+
+  it('stores which apartment gateway should read house-wide information values', async () => {
+    const user = userEvent.setup();
+    renderSettings();
+
+    await user.click(screen.getByRole('button', { name: /house-wide info & alarms/i }));
+    await user.selectOptions(screen.getByLabelText(/read values using apartment gateway/i), 'apartment_2');
+
+    await waitFor(() => {
+      expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+        building: expect.objectContaining({
+          houseWideInfoReadApartmentId: 'apartment_2',
+        }),
+      }));
+    });
+  });
+
+  it('stores new house-wide information in the building scope only', async () => {
+    const user = userEvent.setup();
+    renderSettings();
+
+    await user.click(screen.getByRole('button', { name: /house-wide info & alarms/i }));
+    await user.click(screen.getByRole('button', { name: /add house-wide information/i }));
+    const addPanel = screen.getByText('New House-Wide Information').closest('div');
+    await user.type(within(addPanel).getByPlaceholderText('e.g. Outside Temperature'), 'Wind');
+    await user.type(within(addPanel).getByPlaceholderText('e.g. 1/1/1'), '1/6/0');
     await user.click(screen.getByRole('button', { name: /save item/i }));
 
     await waitFor(() => {
@@ -494,7 +521,12 @@ describe('Settings — central information and apartment alarms', () => {
         building: expect.objectContaining({
           sharedInfos: expect.arrayContaining([
             expect.objectContaining({ id: 'info-1', name: 'Outside Temperature' }),
-            expect.objectContaining({ name: 'Wind', type: 'info', category: 'temperature' }),
+            expect.objectContaining({
+              name: 'Wind',
+              type: 'info',
+              category: 'temperature',
+              statusGroupAddress: '1/6/0',
+            }),
           ]),
         }),
         apartments: expect.arrayContaining([
@@ -511,9 +543,11 @@ describe('Settings — central information and apartment alarms', () => {
     const user = userEvent.setup();
     renderSettings();
 
-    await user.click(screen.getByRole('button', { name: /global info & alarms/i }));
+    await user.click(screen.getByRole('button', { name: /house-wide info & alarms/i }));
     await user.click(screen.getByRole('button', { name: /add alarm/i }));
-    await user.type(screen.getByPlaceholderText('Name (e.g. Rain Alarm)'), 'Window Alarm');
+    const addPanel = screen.getByText('New Alarm').closest('div');
+    await user.type(within(addPanel).getByPlaceholderText('e.g. Rain Alarm'), 'Window Alarm');
+    await user.type(within(addPanel).getByPlaceholderText('e.g. 1/1/1'), '2/1/9');
     await user.click(screen.getByRole('button', { name: /save item/i }));
 
     await waitFor(() => {
@@ -526,7 +560,11 @@ describe('Settings — central information and apartment alarms', () => {
             id: 'apartment_1',
             alarms: expect.arrayContaining([
               expect.objectContaining({ id: 'alarm-1', name: 'Rain Alarm' }),
-              expect.objectContaining({ name: 'Window Alarm', type: 'alarm' }),
+              expect.objectContaining({
+                name: 'Window Alarm',
+                type: 'alarm',
+                statusGroupAddress: '2/1/9',
+              }),
             ]),
           }),
           expect.objectContaining({
@@ -542,7 +580,7 @@ describe('Settings — central information and apartment alarms', () => {
     const user = userEvent.setup();
     renderSettings();
 
-    await user.click(screen.getByRole('button', { name: /global info & alarms/i }));
+    await user.click(screen.getByRole('button', { name: /house-wide info & alarms/i }));
     await user.click(screen.getAllByTitle('Browse ETS addresses')[0]);
 
     expect(screen.getByTestId('knx-group-address-modal')).toBeInTheDocument();
@@ -550,7 +588,7 @@ describe('Settings — central information and apartment alarms', () => {
     expect(screen.getByText('count:1')).toBeInTheDocument();
   });
 
-  it('persists the DPT for manually entered central information GAs when the XML contains a match', async () => {
+  it('persists the DPT for manually entered house-wide information GAs when the XML contains a match', async () => {
     const user = userEvent.setup();
     renderSettings({
       ...FULL_CONFIG,
@@ -561,7 +599,7 @@ describe('Settings — central information and apartment alarms', () => {
       },
     });
 
-    await user.click(screen.getByRole('button', { name: /global info & alarms/i }));
+    await user.click(screen.getByRole('button', { name: /house-wide info & alarms/i }));
     const groupAddressInput = screen.getAllByPlaceholderText('e.g. 1/1/1')[0];
     await user.clear(groupAddressInput);
     await user.type(groupAddressInput, '1/6/3');

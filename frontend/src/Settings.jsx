@@ -136,11 +136,12 @@ function getEventClientPoint(event) {
 }
 
 // ── Main Settings ─────────────────────────────────────────
-export default function Settings({ fullConfig, apartment, config, fetchConfig, applyConfig, addToast, hueStatus, sharedHueStatus }) {
+export default function Settings({ fullConfig, apartment, config, fetchConfig, applyConfig, addToast, hueStatus }) {
   const [floors, setFloors] = useState(() => migrateConfig(config));
   const floorsRef = useRef(migrateConfig(config));
   const [sharedInfos, setSharedInfos] = useState(() => Array.isArray(config.sharedInfos) ? config.sharedInfos : []);
   const [alarms, setAlarms] = useState(() => Array.isArray(config.alarms) ? config.alarms : []);
+  const [houseWideInfoReadApartmentId, setHouseWideInfoReadApartmentId] = useState(() => config.houseWideInfoReadApartmentId || apartment.id);
   const [activeFloorId, setActiveFloorId] = useState(() => {
     const f = migrateConfig(config);
     return f[0]?.id || null;
@@ -182,7 +183,8 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     target: null,
     allowUpload: false,
     helperText: '',
-    scope: 'apartment'
+    scope: 'apartment',
+    onSelect: null,
   });
   const [houseGroupAddressBook, setHouseGroupAddressBook] = useState([]);
   const [houseGroupAddressFileName, setHouseGroupAddressFileName] = useState('');
@@ -214,6 +216,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     });
     setSharedInfos(Array.isArray(config.sharedInfos) ? config.sharedInfos : []);
     setAlarms(Array.isArray(config.alarms) ? config.alarms : []);
+    setHouseWideInfoReadApartmentId(config.houseWideInfoReadApartmentId || apartment.id);
     setActiveFloorId(migrateConfig(config)[0]?.id || null);
     setHouseGroupAddressBook(Array.isArray(config.importedGroupAddresses) ? config.importedGroupAddresses : []);
     setHouseGroupAddressFileName(config.importedGroupAddressesFileName || '');
@@ -248,6 +251,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     nextAlarms = alarms,
     nextHouseGroupAddressBook = houseGroupAddressBook,
     nextHouseGroupAddressFileName = houseGroupAddressFileName,
+    nextHouseWideInfoReadApartmentId = houseWideInfoReadApartmentId,
   } = {}) => {
     const privateFloors = stripSharedMarker(nextFloors.filter((floor) => !floor.isShared));
     const sharedAreas = stripSharedMarker(nextFloors.filter((floor) => floor.isShared));
@@ -259,10 +263,9 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
         ...fullConfig.building,
         sharedInfos: nextSharedInfos,
         sharedAreas,
+        houseWideInfoReadApartmentId: nextHouseWideInfoReadApartmentId,
         importedGroupAddresses: nextHouseGroupAddressBook,
         importedGroupAddressesFileName: nextHouseGroupAddressFileName,
-        sharedImportedGroupAddresses: nextHouseGroupAddressBook,
-        sharedImportedGroupAddressesFileName: nextHouseGroupAddressFileName,
       },
       apartments: fullConfig.apartments.map((entry) => ({
         ...entry,
@@ -527,7 +530,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
       await persistConfig(buildNextConfig({ nextSharedInfos: normalizedInfos }));
       return true;
     } catch {
-      addToast('Failed to save central information', 'error');
+      addToast('Failed to save house-wide information', 'error');
       return false;
     }
   };
@@ -543,6 +546,17 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
       return true;
     } catch {
       addToast('Failed to save apartment alarms', 'error');
+      return false;
+    }
+  };
+
+  const saveHouseWideInfoReadApartment = async (nextApartmentId) => {
+    setHouseWideInfoReadApartmentId(nextApartmentId);
+    try {
+      await persistConfig(buildNextConfig({ nextHouseWideInfoReadApartmentId: nextApartmentId }));
+      return true;
+    } catch {
+      addToast('Failed to save house-wide information gateway', 'error');
       return false;
     }
   };
@@ -800,7 +814,8 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
       target: options.target || null,
       allowUpload: !!options.allowUpload,
       helperText: options.helperText || '',
-      scope: options.scope || floorScope
+      scope: options.scope || floorScope,
+      onSelect: options.onSelect || null,
     });
   };
   const closeGroupAddressModal = () => setGroupAddressModal({
@@ -813,7 +828,8 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
     target: null,
     allowUpload: false,
     helperText: '',
-    scope: 'apartment'
+    scope: 'apartment',
+    onSelect: null,
   });
 
   const importGroupAddresses = async (addresses, fileName) => {
@@ -840,7 +856,12 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
   };
 
   const handleSelectGroupAddress = async (groupAddress) => {
-    const { roomId, floorId, target } = groupAddressModal;
+    const { roomId, floorId, target, onSelect } = groupAddressModal;
+    if (onSelect) {
+      onSelect(groupAddress);
+      closeGroupAddressModal();
+      return;
+    }
     if (target?.kind === 'sharedInfo') {
       const updatedInfos = sharedInfos.map((info) => info.id === target.id
         ? { ...info, statusGroupAddress: groupAddress.address, dpt: groupAddress.dpt || '' }
@@ -928,7 +949,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: activeTab === 'globals' ? 'var(--accent-color)' : '', color: activeTab === 'globals' ? 'white' : '' }}
           >
             <SettingsIcon size={14} />
-            {activeTab === 'rooms' ? 'Global Info & Alarms' : 'Back to Rooms'}
+            {activeTab === 'rooms' ? 'House-wide Info & Alarms' : 'Back to Rooms'}
           </button>
         </div>
       </div>
@@ -937,17 +958,20 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
         <>
           <div className="settings-floors-header">
             <div style={{ padding: '1rem 1.5rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-              Central Information & Apartment Alarms
+              Configure information & alert panel
             </div>
           </div>
           <div style={{ padding: '1.5rem' }}>
             <GlobalsConfig
+              apartments={fullConfig.apartments}
               sharedInfos={sharedInfos}
               apartmentAlarms={alarms}
+              houseWideInfoReadApartmentId={houseWideInfoReadApartmentId}
               setSharedInfos={setSharedInfos}
               setApartmentAlarms={setAlarms}
               saveSharedInfos={saveSharedInfos}
               saveApartmentAlarms={saveAlarms}
+              saveHouseWideInfoReadApartment={saveHouseWideInfoReadApartment}
               openGroupAddressModal={openGroupAddressModal}
               requestConfirm={requestConfirm}
               resolveGroupAddressName={(address, type) => type === 'alarm'
@@ -1011,7 +1035,7 @@ export default function Settings({ fullConfig, apartment, config, fetchConfig, a
                   openHueRoomModal={openHueRoomModal}
                   openHueLampModal={openHueLampModal}
                   openGroupAddressModal={openGroupAddressModal}
-                  hueStatus={activeFloor?.isShared ? sharedHueStatus : hueStatus}
+                  hueStatus={hueStatus}
                   onFuncDragEnd={onFuncDragEnd}
                   onSceneDragEnd={onSceneDragEnd}
                   sensors={sensors}

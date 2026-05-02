@@ -5,7 +5,7 @@ const {
   getAllSharedRooms,
   getApartmentById,
   getApartmentBySlug,
-  getSharedAccessApartment,
+  getHouseWideInfoReadApartment,
   migrateLegacyConfig,
   buildPublicConfig,
   normalizeDptString,
@@ -30,7 +30,7 @@ describe('configModel migration and normalization', () => {
     expect(migrated.building.sharedInfos).toEqual([
       expect.objectContaining({ id: 'info-1', name: 'Outside Temperature', type: 'info' }),
     ]);
-    expect(migrated.building.sharedUsesApartmentImportedGroupAddresses).toBe(false);
+    expect(migrated.building.houseWideInfoReadApartmentId).toBe('apartment_1');
     expect(migrated.apartments[0]).toEqual(expect.objectContaining({
       id: 'apartment_1',
       name: 'Wohnung 1',
@@ -41,15 +41,13 @@ describe('configModel migration and normalization', () => {
     expect(migrated.apartments[0].areaOrder).toEqual([migrated.apartments[0].floors[0].id]);
   });
 
-  it('normalizes duplicate apartment slugs and repairs invalid shared access ids', () => {
+  it('normalizes duplicate apartment slugs and repairs invalid house-wide info gateway ids', () => {
     const normalized = normalizeConfigShape({
       version: 2,
       building: {
-        sharedAccessApartmentId: 'missing',
+        houseWideInfoReadApartmentId: 'missing',
         sharedInfos: [],
         sharedAreas: [],
-        sharedImportedGroupAddresses: [],
-        sharedImportedGroupAddressesFileName: '',
       },
       apartments: [
         {
@@ -71,36 +69,17 @@ describe('configModel migration and normalization', () => {
 
     expect(normalized.apartments[0].slug).toBe('wohnung');
     expect(normalized.apartments[1].slug).toBe('wohnung-2');
-    expect(normalized.building.sharedAccessApartmentId).toBe('apartment_1');
-  });
-
-  it('preserves whether shared browsing should use the apartment ETS XML', () => {
-    const normalized = normalizeConfigShape({
-      version: 2,
-      building: {
-        sharedAccessApartmentId: 'apartment_1',
-        sharedUsesApartmentImportedGroupAddresses: true,
-        sharedInfos: [],
-        sharedAreas: [],
-        sharedImportedGroupAddresses: [{ address: '1/1/1', name: 'Shared', supported: true }],
-        sharedImportedGroupAddressesFileName: 'shared.xml',
-      },
-      apartments: [{ id: 'apartment_1', name: 'Wohnung Ost', slug: 'wohnung-ost', floors: [], alarms: [] }],
-    });
-
-    expect(normalized.building.sharedUsesApartmentImportedGroupAddresses).toBe(true);
+    expect(normalized.building.houseWideInfoReadApartmentId).toBe('apartment_1');
   });
 
   it('preserves a building-wide configuration password internally', () => {
     const normalized = normalizeConfigShape({
       version: 2,
       building: {
-        sharedAccessApartmentId: 'apartment_1',
+        houseWideInfoReadApartmentId: 'apartment_1',
         configurationPassword: 'familie',
         sharedInfos: [],
         sharedAreas: [],
-        sharedImportedGroupAddresses: [],
-        sharedImportedGroupAddressesFileName: '',
       },
       apartments: [{ id: 'apartment_1', name: 'Wohnung Ost', slug: 'wohnung-ost', floors: [], alarms: [] }],
     });
@@ -112,11 +91,11 @@ describe('configModel migration and normalization', () => {
     const normalized = normalizeConfigShape({
       version: 2,
       building: {
-        sharedAccessApartmentId: 'apartment_1',
+        houseWideInfoReadApartmentId: 'apartment_1',
         sharedInfos: [{ id: 'info-1', name: 'Outside Temperature', statusGroupAddress: '1/6/3', dpt: 'DPST-9-1' }],
         sharedAreas: [],
-        sharedImportedGroupAddresses: [{ address: '1/6/4', name: 'Wind', dpt: 'DPT 9.005', supported: true }],
-        sharedImportedGroupAddressesFileName: 'shared.xml',
+        importedGroupAddresses: [{ address: '1/6/4', name: 'Wind', dpt: 'DPT 9.005', supported: true }],
+        importedGroupAddressesFileName: 'shared.xml',
       },
       apartments: [{
         id: 'apartment_1',
@@ -128,7 +107,7 @@ describe('configModel migration and normalization', () => {
     });
 
     expect(normalized.building.sharedInfos[0].dpt).toBe('DPT9.001');
-    expect(normalized.building.sharedImportedGroupAddresses[0].dpt).toBe('DPT9.005');
+    expect(normalized.building.importedGroupAddresses[0].dpt).toBe('DPT9.005');
     expect(normalized.apartments[0].alarms[0].dpt).toBe('DPT1.001');
   });
 
@@ -136,10 +115,10 @@ describe('configModel migration and normalization', () => {
     const normalized = normalizeConfigShape({
       version: 2,
       building: {
-        sharedAccessApartmentId: 'apartment_1',
+        houseWideInfoReadApartmentId: 'apartment_1',
         sharedInfos: [],
         sharedAreas: [],
-        sharedImportedGroupAddresses: [{
+        importedGroupAddresses: [{
           address: '1/0/2',
           name: 'Flur KG: Licht Schalten',
           dpt: 'DPST-1-1',
@@ -148,7 +127,7 @@ describe('configModel migration and normalization', () => {
           topLevelRange: 'Allgemeinbereich',
           supported: true,
         }],
-        sharedImportedGroupAddressesFileName: 'main.xml',
+        importedGroupAddressesFileName: 'main.xml',
       },
       apartments: [{
         id: 'apartment_1',
@@ -168,7 +147,7 @@ describe('configModel migration and normalization', () => {
       }],
     });
 
-    expect(normalized.building.sharedImportedGroupAddresses[0]).toEqual(expect.objectContaining({
+    expect(normalized.building.importedGroupAddresses[0]).toEqual(expect.objectContaining({
       room: 'Flur KG',
       rangePath: ['Allgemeinbereich', 'Licht, Steckdosen & Motoren'],
       topLevelRange: 'Allgemeinbereich',
@@ -186,7 +165,7 @@ describe('configModel migration and normalization', () => {
     const normalized = normalizeConfigShape({
       version: 2,
       building: {
-        sharedAccessApartmentId: 'apartment_1',
+        houseWideInfoReadApartmentId: 'apartment_1',
         importedGroupAddresses: [],
         importedGroupAddressesFileName: '',
         sharedInfos: [],
@@ -221,7 +200,7 @@ describe('configModel selectors', () => {
   const config = normalizeConfigShape({
     version: 2,
     building: {
-      sharedAccessApartmentId: 'apartment_2',
+      houseWideInfoReadApartmentId: 'apartment_2',
       sharedInfos: [],
       sharedAreas: [
         {
@@ -256,8 +235,8 @@ describe('configModel selectors', () => {
     expect(getApartmentBySlug(config, 'wohnung-ost')).toEqual(expect.objectContaining({ id: 'apartment_1' }));
   });
 
-  it('returns the configured shared access apartment', () => {
-    expect(getSharedAccessApartment(config)).toEqual(expect.objectContaining({ id: 'apartment_2', name: 'Wohnung West' }));
+  it('returns the configured house-wide info gateway apartment', () => {
+    expect(getHouseWideInfoReadApartment(config)).toEqual(expect.objectContaining({ id: 'apartment_2', name: 'Wohnung West' }));
   });
 
   it('collects apartment and shared rooms separately', () => {
@@ -275,12 +254,10 @@ describe('buildPublicConfig', () => {
     const publicConfig = buildPublicConfig({
       version: 2,
       building: {
-        sharedAccessApartmentId: 'apartment_1',
+        houseWideInfoReadApartmentId: 'apartment_1',
         configurationPassword: 'familie',
         sharedInfos: [],
         sharedAreas: [],
-        sharedImportedGroupAddresses: [],
-        sharedImportedGroupAddressesFileName: '',
       },
       apartments: [{ id: 'apartment_1', name: 'Wohnung Ost', slug: 'wohnung-ost', floors: [], alarms: [] }],
     });

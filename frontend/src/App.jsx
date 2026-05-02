@@ -4,7 +4,7 @@ import { Home, Settings as SettingsIcon, Wifi, WifiOff, Plug, Bot } from 'lucide
 import Dashboard from './Dashboard';
 import Settings from './Settings';
 import Connections from './Connections';
-import { getConfig, verifyConfigPassword } from './configApi';
+import { getConfig, refreshKnxStatuses, verifyConfigPassword } from './configApi';
 import Automation from './Automation';
 import { buildApartmentPath, buildApartmentView, migrateLegacyConfig, parseAppPath } from './appModel';
 import PasswordDialog from './components/PasswordDialog';
@@ -15,9 +15,7 @@ function App() {
   const [route, setRoute] = useState(() => parseAppPath(window.location.pathname));
   const [config, setConfig] = useState(() => migrateLegacyConfig({}));
   const [knxStatuses, setKnxStatuses] = useState({});
-  const [sharedKnxStatus, setSharedKnxStatus] = useState({ connected: false, msg: 'Connecting...' });
   const [hueStatuses, setHueStatuses] = useState({});
-  const [sharedHueStatus, setSharedHueStatus] = useState({ paired: false, bridgeIp: '' });
   const [deviceStates, setDeviceStates] = useState({ apartments: {}, shared: {} });
   const [hueStates, setHueStates] = useState({ apartments: {}, shared: {} });
   const [toasts, setToasts] = useState([]);
@@ -105,10 +103,6 @@ function App() {
     const socket = io(socketUrl);
 
     socket.on('knx_status', (status) => {
-      if (status.scope === 'shared') {
-        setSharedKnxStatus(status);
-        return;
-      }
       setKnxStatuses((prev) => ({ ...prev, [status.apartmentId]: status }));
     });
 
@@ -154,10 +148,6 @@ function App() {
     });
 
     socket.on('hue_status', (status) => {
-      if (status.scope === 'shared') {
-        setSharedHueStatus(status);
-        return;
-      }
       setHueStatuses((prev) => ({ ...prev, [status.apartmentId]: status }));
     });
 
@@ -225,6 +215,11 @@ function App() {
     setConfigPasswordValue('');
     setConfigPasswordError('');
   }, [configProtectionEnabled]);
+
+  useEffect(() => {
+    if (!configReady || !apartment?.id) return;
+    refreshKnxStatuses(apartment.id).catch(() => {});
+  }, [configReady, apartment?.id]);
 
   const handleUnlockProtectedConfig = async () => {
     const trimmedPassword = configPasswordValue;
@@ -389,7 +384,6 @@ function App() {
             fetchConfig={fetchConfig}
             applyConfig={applyConfig}
             hueStatus={currentHueStatus}
-            sharedHueStatus={sharedHueStatus}
             addToast={addToast}
           />
         )}
@@ -402,7 +396,6 @@ function App() {
             fetchConfig={fetchConfig}
             applyConfig={applyConfig}
             knxStatus={currentKnxStatus}
-            sharedKnxStatus={sharedKnxStatus}
             hueStatus={currentHueStatus}
             addToast={addToast}
             navigateToApartment={(slug) => navigateTo(slug, 'dashboard')}

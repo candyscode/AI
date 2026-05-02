@@ -230,7 +230,6 @@ function normalizeApartment(apartment, index = 0, usedSlugs = new Set()) {
       : [],
     sunTrigger: apartment?.sunTrigger && typeof apartment.sunTrigger === 'object' ? {
       groupAddress: typeof apartment.sunTrigger.groupAddress === 'string' ? apartment.sunTrigger.groupAddress : '',
-      bus: apartment.sunTrigger.bus === 'main' ? 'main' : 'apartment',
       dayValue: apartment.sunTrigger.dayValue === 0 ? 0 : 1,
     } : null,
     importedGroupAddresses: normalizeImportedGroupAddresses(apartment?.importedGroupAddresses),
@@ -262,17 +261,12 @@ function migrateLegacyConfig(input) {
   return {
     version: 2,
     building: {
-      sharedAccessApartmentId: 'apartment_1',
+      houseWideInfoReadApartmentId: 'apartment_1',
       configurationPassword: '',
-      sharedUsesApartmentImportedGroupAddresses: false,
       sharedInfos,
       sharedAreas: [],
       importedGroupAddresses: normalizeImportedGroupAddresses(input?.importedGroupAddresses),
       importedGroupAddressesFileName: typeof input?.importedGroupAddressesFileName === 'string'
-        ? input.importedGroupAddressesFileName
-        : '',
-      sharedImportedGroupAddresses: normalizeImportedGroupAddresses(input?.importedGroupAddresses),
-      sharedImportedGroupAddressesFileName: typeof input?.importedGroupAddressesFileName === 'string'
         ? input.importedGroupAddressesFileName
         : '',
     },
@@ -308,8 +302,10 @@ function normalizeConfigShape(input) {
     ? source.apartments.map((apartment, index) => normalizeApartment(apartment, index, usedSlugs))
     : [normalizeApartment({}, 0, usedSlugs)];
 
-  const sharedAccessApartmentId = apartments.some((apartment) => apartment.id === source?.building?.sharedAccessApartmentId)
-    ? source.building.sharedAccessApartmentId
+  const houseWideInfoReadApartmentId = apartments.some((apartment) => apartment.id === source?.building?.houseWideInfoReadApartmentId)
+    ? source.building.houseWideInfoReadApartmentId
+    : apartments.some((apartment) => apartment.id === source?.building?.sharedAccessApartmentId)
+      ? source.building.sharedAccessApartmentId
     : apartments[0].id;
 
   const hasExplicitHouseImport = Array.isArray(source?.building?.importedGroupAddresses);
@@ -332,11 +328,10 @@ function normalizeConfigShape(input) {
   return {
     version: 2,
     building: {
-      sharedAccessApartmentId,
+      houseWideInfoReadApartmentId,
       configurationPassword: typeof source?.building?.configurationPassword === 'string'
         ? source.building.configurationPassword
         : '',
-      sharedUsesApartmentImportedGroupAddresses: source?.building?.sharedUsesApartmentImportedGroupAddresses === true,
       sharedInfos: Array.isArray(source?.building?.sharedInfos)
         ? source.building.sharedInfos.map(normalizeSharedInfo).filter(Boolean)
         : [],
@@ -345,10 +340,6 @@ function normalizeConfigShape(input) {
         : [],
       importedGroupAddresses,
       importedGroupAddressesFileName,
-      sharedImportedGroupAddresses: normalizeImportedGroupAddresses(source?.building?.sharedImportedGroupAddresses),
-      sharedImportedGroupAddressesFileName: typeof source?.building?.sharedImportedGroupAddressesFileName === 'string'
-        ? source.building.sharedImportedGroupAddressesFileName
-        : '',
     },
     apartments,
   };
@@ -378,9 +369,12 @@ function getApartmentBySlug(config, slug) {
     : null;
 }
 
-function getSharedAccessApartment(config) {
-  const explicit = getApartmentById(config, config?.building?.sharedAccessApartmentId);
-  return explicit || (Array.isArray(config?.apartments) ? config.apartments[0] : null);
+function getHouseWideInfoReadApartment(config) {
+  const explicit = getApartmentById(config, config?.building?.houseWideInfoReadApartmentId);
+  if (explicit) return explicit;
+  const legacy = getApartmentById(config, config?.building?.sharedAccessApartmentId);
+  if (legacy) return legacy;
+  return Array.isArray(config?.apartments) ? config.apartments[0] : null;
 }
 
 function getAllRoomsForAreas(areas) {
@@ -403,7 +397,7 @@ module.exports = {
   getAllSharedRooms,
   getApartmentById,
   getApartmentBySlug,
-  getSharedAccessApartment,
+  getHouseWideInfoReadApartment,
   migrateLegacyConfig,
   buildPublicConfig,
   normalizeConfigShape,

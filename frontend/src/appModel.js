@@ -39,8 +39,7 @@ export function migrateLegacyConfig(config) {
   return {
     version: 2,
     building: {
-      sharedAccessApartmentId: 'apartment_1',
-      sharedUsesApartmentImportedGroupAddresses: false,
+      houseWideInfoReadApartmentId: 'apartment_1',
       importedGroupAddresses: Array.isArray(config?.importedGroupAddresses)
         ? config.importedGroupAddresses
         : [],
@@ -49,10 +48,6 @@ export function migrateLegacyConfig(config) {
         ? config.globals.filter((item) => item?.type !== 'alarm')
         : [],
       sharedAreas: [],
-      sharedImportedGroupAddresses: Array.isArray(config?.importedGroupAddresses)
-        ? config.importedGroupAddresses
-        : [],
-      sharedImportedGroupAddressesFileName: config?.importedGroupAddressesFileName || '',
     },
     apartments: [
       {
@@ -166,9 +161,8 @@ export function buildApartmentView(config, apartmentSlug) {
         ? normalized.building.importedGroupAddresses
         : [],
       sharedImportedGroupAddressesFileName: normalized.building?.importedGroupAddressesFileName || '',
-      sharedAccessApartmentId: normalized.building?.sharedAccessApartmentId || apartment.id,
-      sharedUsesApartmentImportedGroupAddresses: false,
-      sunTrigger: apartment.sunTrigger || { groupAddress: '', bus: 'apartment', dayValue: 1 },
+      houseWideInfoReadApartmentId: normalized.building?.houseWideInfoReadApartmentId || apartment.id,
+      sunTrigger: apartment.sunTrigger || { groupAddress: '', dayValue: 1 },
       automations: Array.isArray(apartment.automations) ? apartment.automations : [],
     },
     sharedAreas,
